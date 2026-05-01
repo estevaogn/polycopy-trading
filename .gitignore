@@ -22,6 +22,9 @@ env/
 .env.local
 .env.*.local
 
+# Local-only config (use the .example.yaml as template)
+config/wallets_seed.yaml
+
 # Testing & coverage
 .pytest_cache/
 .coverage

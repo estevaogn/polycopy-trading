@@ -1,0 +1,13 @@
+# Polycopy - lista de wallets monitoradas pelo watcher.
+# Formato: lista de objetos com 'address' (Ethereum 0x...) e 'label' (string humana).
+#
+# Este arquivo é um EXAMPLE com placeholder. Copie para `wallets_seed.yaml`
+# (que está em .gitignore) e substitua pelos endereços reais que você quer
+# monitorar.
+#
+#     cp config/wallets_seed.example.yaml config/wallets_seed.yaml
+#
+# Sugestões iniciais: top traders do leaderboard em https://polymarket.com/leaderboard
+wallets:
+  - address: "0x1234567890abcdef1234567890abcdef12345678"
+    label: "Substituir por wallet real"
