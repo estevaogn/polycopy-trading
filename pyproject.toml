@@ -20,6 +20,7 @@ dependencies = [
     "tenacity>=9",
     "prometheus-client>=0.21",
     "pyyaml>=6.0",
+    "aiogram>=3.13",
 ]
 
 [build-system]
