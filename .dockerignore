@@ -1,0 +1,43 @@
+# Source control
+.git
+.gitignore
+.gitattributes
+
+# Python build artifacts
+.venv
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+*.egg-info
+htmlcov
+dist
+build
+
+# IDE / editor
+.vscode
+.idea
+*.swp
+*.swo
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Project meta
+docs/
+tests/
+infra/
+CHANGELOG.md
+ARCHITECTURE.md
+PROMPT_POLYCOPY_v2.md
+*.md
+!README.md
+
+# Claude/AI context
+.claude
+.cursor

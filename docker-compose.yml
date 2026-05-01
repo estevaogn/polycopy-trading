@@ -68,6 +68,76 @@ services:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - polycopy_prometheus_data:/prometheus
 
+  watcher:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+      args:
+        AGENT_MODULE: watcher
+    image: polycopy/watcher:dev
+    container_name: polycopy-watcher
+    restart: unless-stopped
+    labels:
+      com.polycopy.role: agent
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    environment:
+      ENV: ${ENV}
+      LOG_LEVEL: ${LOG_LEVEL}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_PORT: 5432
+      POSTGRES_HOST: polycopy-postgres
+      NATS_URL: nats://polycopy-nats:4222
+      WATCHER_INTERVAL_S: "5"
+      WATCHER_BOOTSTRAP_HOURS: "24"
+      WATCHER_METRICS_PORT: "9101"
+      WALLETS_SEED_PATH: /app/config/wallets_seed.yaml
+      POLYMARKET_BASE_URL: https://data-api.polymarket.com
+    ports:
+      - "127.0.0.1:9101:9101"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:9101/metrics\", timeout=2).read()' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  notifier:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+      args:
+        AGENT_MODULE: notifier
+    image: polycopy/notifier:dev
+    container_name: polycopy-notifier
+    restart: unless-stopped
+    labels:
+      com.polycopy.role: agent
+    depends_on:
+      nats:
+        condition: service_healthy
+    environment:
+      ENV: ${ENV}
+      LOG_LEVEL: ${LOG_LEVEL}
+      NATS_URL: nats://polycopy-nats:4222
+      WALLETS_SEED_PATH: /app/config/wallets_seed.yaml
+      NOTIFIER_METRICS_PORT: "9102"
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+    ports:
+      - "127.0.0.1:9102:9102"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:9102/metrics\", timeout=2).read()' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
 volumes:
   polycopy_postgres_data:
   polycopy_nats_data:

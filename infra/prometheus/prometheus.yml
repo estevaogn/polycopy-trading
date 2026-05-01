@@ -5,3 +5,9 @@ scrape_configs:
   - job_name: prometheus
     static_configs:
       - targets: ['localhost:9090']
+  - job_name: polycopy-watcher
+    static_configs:
+      - targets: ['polycopy-watcher:9101']
+  - job_name: polycopy-notifier
+    static_configs:
+      - targets: ['polycopy-notifier:9102']
