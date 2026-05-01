@@ -9,6 +9,9 @@ authors = [
 ]
 dependencies = [
     "pydantic>=2.9",
+    "asyncpg>=0.30",
+    "nats-py>=2.7",
+    "redis>=5.1",
 ]
 
 [build-system]
@@ -27,6 +30,7 @@ dev = [
     "ruff>=0.7",
     "pre-commit>=4",
     "commitizen>=4",
+    "python-dotenv>=1.0",
 ]
 
 [tool.ruff]
@@ -58,6 +62,9 @@ init_typed = true
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = ["--tb=short", "--strict-markers", "--strict-config"]
+markers = [
+    "integration: tests that require running infrastructure (postgres, nats, redis)",
+]
 
 [tool.commitizen]
 name = "cz_conventional_commits"
