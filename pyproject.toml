@@ -25,6 +25,8 @@ dev = [
     "pytest-cov>=5",
     "mypy>=1.13",
     "ruff>=0.7",
+    "pre-commit>=4",
+    "commitizen>=4",
 ]
 
 [tool.ruff]
@@ -56,3 +58,8 @@ init_typed = true
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = ["--tb=short", "--strict-markers", "--strict-config"]
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "0.1.0"
+tag_format = "v$version"
