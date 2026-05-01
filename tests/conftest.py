@@ -1,15 +1,18 @@
 """Shared test fixtures and bootstrap.
 
-Carrega `.env` da raiz do repo se existir, antes dos testes coletarem env vars.
-Em Task 6 essa lógica passa a usar `polycopy.config.Settings`; por ora, dotenv direto.
+Carrega `.env` via `polycopy.config.Settings` (que usa pydantic-settings).
+Settings é construída lazy via fixture, não no import — isso permite testes
+unitários que não dependem de `.env` rodarem sem ele.
 """
 
-from pathlib import Path
+from __future__ import annotations
 
-from dotenv import load_dotenv
+import pytest
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-_ENV_FILE = _REPO_ROOT / ".env"
+from polycopy.config import Settings
 
-if _ENV_FILE.exists():
-    load_dotenv(_ENV_FILE, override=False)
+
+@pytest.fixture(scope="session")
+def settings() -> Settings:
+    """Singleton Settings carregada do `.env`. Use em testes integration."""
+    return Settings()  # type: ignore[call-arg]

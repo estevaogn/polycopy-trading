@@ -9,6 +9,8 @@ authors = [
 ]
 dependencies = [
     "pydantic>=2.9",
+    "pydantic-settings>=2.5",
+    "structlog>=24.4",
     "asyncpg>=0.30",
     "nats-py>=2.7",
     "redis>=5.1",
@@ -30,7 +32,6 @@ dev = [
     "ruff>=0.7",
     "pre-commit>=4",
     "commitizen>=4",
-    "python-dotenv>=1.0",
 ]
 
 [tool.ruff]
