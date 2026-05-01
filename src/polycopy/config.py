@@ -58,3 +58,12 @@ class Settings(BaseSettings):
             f"{self.postgres_password.get_secret_value()}@127.0.0.1:"
             f"{self.postgres_port}/{self.postgres_db}"
         )
+
+    @property
+    def postgres_async_dsn(self) -> str:
+        """DSN async (asyncpg-style). Usado pelo SQLAlchemy async engine."""
+        return (
+            f"postgresql+asyncpg://{self.postgres_user}:"
+            f"{self.postgres_password.get_secret_value()}@127.0.0.1:"
+            f"{self.postgres_port}/{self.postgres_db}"
+        )
