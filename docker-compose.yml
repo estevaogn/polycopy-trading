@@ -93,6 +93,7 @@ services:
       POSTGRES_PORT: 5432
       POSTGRES_HOST: polycopy-postgres
       NATS_URL: nats://polycopy-nats:4222
+      REDIS_URL: redis://polycopy-redis:6379/0
       WATCHER_INTERVAL_S: "5"
       WATCHER_BOOTSTRAP_HOURS: "24"
       WATCHER_METRICS_PORT: "9101"
@@ -124,7 +125,15 @@ services:
     environment:
       ENV: ${ENV}
       LOG_LEVEL: ${LOG_LEVEL}
+      # Settings exige todas as vars de infra mesmo que o notifier não use postgres/redis.
+      # Refator pra split (PostgresConfig, RedisConfig) entra em fase posterior.
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_PORT: 5432
+      POSTGRES_HOST: polycopy-postgres
       NATS_URL: nats://polycopy-nats:4222
+      REDIS_URL: redis://polycopy-redis:6379/0
       WALLETS_SEED_PATH: /app/config/wallets_seed.yaml
       NOTIFIER_METRICS_PORT: "9102"
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
