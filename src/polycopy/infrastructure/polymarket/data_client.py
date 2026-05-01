@@ -81,7 +81,8 @@ class PolymarketDataClient:
             endpoint="activity", status=str(response.status_code)
         ).inc()
 
-        rows = response.json().get("data", [])
+        # Polymarket Data API retorna array direto (não envelopado em {"data": ...}).
+        rows = response.json()
         return [self._row_to_trade(row) for row in rows]
 
     async def _with_retry(self, fn: Callable[[], Awaitable[httpx.Response]]) -> httpx.Response:
@@ -97,10 +98,13 @@ class PolymarketDataClient:
 
     @staticmethod
     def _row_to_trade(row: dict[str, Any]) -> Trade:
+        # Endereço da wallet vem em `proxyWallet` (não `user`, que é só o query param).
+        # `logIndex` não é exposto pela API; default 0 é seguro porque /activity
+        # retorna 1 linha por transactionHash, então (tx_hash, 0) é único na prática.
         return Trade(
             tx_hash=row["transactionHash"],
-            log_index=int(row["logIndex"]),
-            wallet=WalletAddress(value=row["user"]),
+            log_index=int(row.get("logIndex", 0)),
+            wallet=WalletAddress(value=row["proxyWallet"]),
             condition_id=ConditionId(value=row["conditionId"]),
             token_id=TokenId(value=str(row["asset"])),
             side=Side(row["side"]),

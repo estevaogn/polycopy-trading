@@ -47,11 +47,11 @@ _BASE = "https://test-data-api.polymarket.com"
 _VALID_ADDR = "0x1234567890abcdef1234567890abcdef12345678"
 
 
-def _row(*, tx: str, log_index: int = 0) -> dict[str, Any]:
+def _row(*, tx: str) -> dict[str, Any]:
+    """Schema da Polymarket Data API real (sem logIndex; campo proxyWallet)."""
     return {
         "transactionHash": tx,
-        "logIndex": log_index,
-        "user": _VALID_ADDR,
+        "proxyWallet": _VALID_ADDR,
         "conditionId": "0x" + "ab" * 32,
         "asset": "12345",
         "side": "BUY",
@@ -67,7 +67,7 @@ async def test_watcher_e2e_persists_publishes_dedups(
 ) -> None:
     # Mock da Polymarket Data API: retorna 1 trade na 1a iter, mesma resposta na 2a.
     respx.get(f"{_BASE}/activity").mock(
-        return_value=httpx.Response(200, json={"data": [_row(tx="0x" + "aa" * 32, log_index=0)]})
+        return_value=httpx.Response(200, json=[_row(tx="0x" + "aa" * 32)])
     )
 
     metrics = make_metrics(registry=CollectorRegistry())

@@ -21,22 +21,22 @@ _BASE = "https://data-api.polymarket.com"
 _VALID_ADDR = "0x1234567890abcdef1234567890abcdef12345678"
 
 
-def _activity_response(rows: list[dict[str, object]]) -> dict[str, object]:
-    return {"data": rows}
+def _activity_response(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    """Polymarket Data API retorna array direto."""
+    return rows
 
 
 def _row(
     *,
     tx: str = "0x" + "cd" * 32,
-    log_index: int = 0,
     side: str = "BUY",
     price: str = "0.55",
     size_usdc: str = "10",
 ) -> dict[str, object]:
+    # API real retorna `proxyWallet` (não `user`) e NÃO retorna `logIndex`.
     return {
         "transactionHash": tx,
-        "logIndex": log_index,
-        "user": _VALID_ADDR,
+        "proxyWallet": _VALID_ADDR,
         "conditionId": "0x" + "ab" * 32,
         "asset": "12345",
         "side": side,
