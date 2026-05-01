@@ -1,0 +1,6 @@
+# Polycopy - lista de wallets monitoradas pelo watcher.
+# Formato: lista de objetos com 'address' (Ethereum 0x...) e 'label' (string humana).
+# TODO: substituir o endereco de teste abaixo por wallets reais antes de deployar em producao.
+wallets:
+  - address: "0x1234567890abcdef1234567890abcdef12345678"
+    label: "Test Wallet"

@@ -135,6 +135,16 @@ def _parse_watch_wallets_csv(csv: str) -> list[TrackedWallet]:
     return wallets
 
 
+def _load_wallets(settings: Settings) -> list[TrackedWallet]:
+    """Carrega wallets de WATCH_WALLETS (override dev) ou do YAML (default)."""
+    from polycopy.infrastructure.wallets_seed import load_wallets_seed  # lazy
+
+    if settings.watch_wallets.strip():
+        return _parse_watch_wallets_csv(settings.watch_wallets)
+    seed = load_wallets_seed(settings.wallets_seed_path)
+    return [TrackedWallet(address=w.address, label=w.label) for w in seed]
+
+
 def _make_repo_factory(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> RepoFactory:
@@ -158,7 +168,11 @@ def _make_repo_factory(
 
 
 async def main() -> None:
-    """Entrypoint: monta dependências, sobe /metrics, registra signal handlers, roda."""
+    """Entrypoint: monta dependências, sobe /metrics, registra signal handlers, roda.
+
+    Carrega wallets de `WALLETS_SEED_PATH` (default `config/wallets_seed.yaml`).
+    Se `WATCH_WALLETS` (CSV) estiver setado, ele *substitui* o YAML — útil pra dev.
+    """
     from polycopy.infrastructure.messaging.nats_bus import NatsMessagingBus
     from polycopy.infrastructure.observability.logging import configure_logging
     from polycopy.infrastructure.persistence.database import (
@@ -173,10 +187,11 @@ async def main() -> None:
     metrics = make_metrics()
     metrics_server, _ = start_metrics_server(settings.watcher_metrics_port)
 
-    wallets = _parse_watch_wallets_csv(settings.watch_wallets)
+    wallets = _load_wallets(settings)
     if not wallets:
         raise RuntimeError(
-            "No wallets configured. Set WATCH_WALLETS=0xaaa,0xbbb (Task 3 esqueleto)."
+            f"No wallets configured. Add entries to {settings.wallets_seed_path} "
+            f"or set WATCH_WALLETS=0xaaa,0xbbb."
         )
 
     engine = make_engine(settings)
