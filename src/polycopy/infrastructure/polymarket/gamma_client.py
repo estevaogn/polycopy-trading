@@ -124,7 +124,7 @@ class PolymarketGammaClient:
         return data
 
     async def _with_retry(self, fn: Callable[[], Awaitable[httpx.Response]]) -> httpx.Response:
-        """Executa fn com retry exponencial em 5xx e transport errors."""
+        """Executa fn com retry exponencial em 5xx, 429 e transport errors."""
         async for attempt in AsyncRetrying(
             stop=stop_after_attempt(self._max_retries),
             wait=wait_exponential(multiplier=0.2, max=2),
