@@ -176,17 +176,18 @@ Mesma estratégia do 1B (data client):
 ### 8.1 Métricas Prometheus
 
 ```
-polycopy_http_request_duration_seconds{client="clob",  endpoint, status}   # histogram (estende a métrica do 1B)
-polycopy_http_request_duration_seconds{client="gamma", endpoint, status}   # histogram (estende)
-polycopy_marketdata_sync_total{result="ok"|"fail"}                         # counter
-polycopy_marketdata_sync_duration_seconds                                  # histogram
-polycopy_marketdata_markets_tracked                                        # gauge
-polycopy_clob_book_fetch_total{result="ok"|"fail"}                         # counter
+polycopy_polymarket_http_request_duration_seconds{client="clob",  endpoint, status}   # histogram
+polycopy_polymarket_http_request_duration_seconds{client="gamma", endpoint, status}   # histogram
+polycopy_polymarket_http_requests_total{client, endpoint, status}                     # counter
+polycopy_marketdata_sync_total{result="ok"|"fail"}                                    # counter
+polycopy_marketdata_sync_duration_seconds                                             # histogram
+polycopy_marketdata_markets_tracked                                                   # gauge
+polycopy_clob_book_fetch_total{result="ok"|"fail"}                                    # counter
 ```
 
 **Métrica de cache (`polycopy_market_cache_hits_total{result="hit"|"stale"|"miss"}`) fica fora do 2A.** O `MarketRepository` apenas lê do DB e expõe a flag `is_stale` no `CachedMarket`; quem decide "aceita stale / refaz fetch" é o caller (Risk no Plano 2B). A métrica nasce no consumer junto da decisão. Será especificada no 2B.
 
-A métrica `polycopy_http_request_duration_seconds` já existe (Plano 1B/T3). Estendemos com novos labels `client="clob"|"gamma"` ao invés de criar métricas paralelas — single source of truth.
+**Nome com prefixo `polymarket_`:** as novas métricas usam `polycopy_polymarket_http_*` (não `polycopy_http_*`) pra ficar específicas e evitar colisão com futuras métricas HTTP de outros clients (Telegram já tem o seu, Risk pode ter, etc.). A métrica `polycopy_polymarket_request_duration_seconds` da Fase 1B (sem `http`) continua dedicada ao `data_client.py` (label `endpoint="activity"`); as novas servem `gamma` + `clob` e ficam no namespace `polymarket_http_*`. Convivem sem conflito.
 
 ### 8.2 Logs estruturados
 
