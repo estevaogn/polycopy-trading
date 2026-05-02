@@ -43,6 +43,9 @@ _STREAM_NAME = "WALLET_TRADES"
 _STREAM_SUBJECTS = ["wallet.trade.>"]
 _STREAM_MAX_AGE_S = 7 * 24 * 3600
 
+_RISK_STREAM_NAME = "RISK_DECISIONS"
+_RISK_STREAM_SUBJECTS = ["order.approved", "trade.rejected"]
+
 
 class NatsMessagingBus:
     """Adapter JetStream de `MessagingPort`."""
@@ -57,7 +60,7 @@ class NatsMessagingBus:
             return
         self._nc = await nats.connect(self._url)
         self._js = self._nc.jetstream()
-        await self._ensure_stream()
+        await self._ensure_streams()
 
     def _require_connected(self) -> tuple[NatsClient, JetStreamContext]:
         """Garante que a conexão NATS+JetStream está ativa; retorna (nc, js)."""
@@ -65,9 +68,11 @@ class NatsMessagingBus:
             raise RuntimeError("NatsMessagingBus not connected; call connect() first")
         return self._nc, self._js
 
-    async def _ensure_stream(self) -> None:
+    async def _ensure_streams(self) -> None:
+        """Garante que ambos os streams existem (idempotente)."""
         _, js = self._require_connected()
-        config = StreamConfig(
+
+        wallet_config = StreamConfig(
             name=_STREAM_NAME,
             subjects=_STREAM_SUBJECTS,
             retention=RetentionPolicy.LIMITS,
@@ -76,9 +81,19 @@ class NatsMessagingBus:
             num_replicas=1,
             duplicate_window=300,  # 5min: dedup window por Nats-Msg-Id
         )
-        # Stream pode já existir com config compatível — BadRequestError é benigno.
-        with contextlib.suppress(BadRequestError):
-            await js.add_stream(config=config)
+        risk_config = StreamConfig(
+            name=_RISK_STREAM_NAME,
+            subjects=_RISK_STREAM_SUBJECTS,
+            retention=RetentionPolicy.LIMITS,
+            max_age=_STREAM_MAX_AGE_S,
+            storage=StorageType.FILE,
+            num_replicas=1,
+            duplicate_window=300,  # 5min: dedup window por Nats-Msg-Id (event_id UUID)
+        )
+        # Streams podem já existir com config compatível — BadRequestError é benigno.
+        for config in (wallet_config, risk_config):
+            with contextlib.suppress(BadRequestError):
+                await js.add_stream(config=config)
 
     async def publish_wallet_trade_detected(self, event: WalletTradeDetected) -> None:
         _, js = self._require_connected()

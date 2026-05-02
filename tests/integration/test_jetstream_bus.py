@@ -10,7 +10,12 @@ from uuid import uuid4
 import pytest
 
 from polycopy.config import Settings
-from polycopy.domain.events import WalletTradeDetected
+from polycopy.domain.events import (
+    OrderApproved,
+    RejectionReason,
+    TradeRejected,
+    WalletTradeDetected,
+)
 from polycopy.domain.models import Side, Trade
 from polycopy.domain.value_objects import (
     ConditionId,
@@ -44,6 +49,25 @@ def _event(*, tx_hash: str = "0x" + "cd" * 32, log_index: int = 0) -> WalletTrad
         event_id=uuid4(),
         occurred_at=datetime.now(tz=UTC),
         trade=_trade(tx_hash=tx_hash, log_index=log_index),
+    )
+
+
+def _order_approved_event() -> OrderApproved:
+    return OrderApproved(
+        event_id=uuid4(),
+        occurred_at=datetime.now(tz=UTC),
+        trade=_trade(),
+    )
+
+
+def _trade_rejected_event(
+    reason: RejectionReason = RejectionReason.SIZE_EXCEEDED,
+) -> TradeRejected:
+    return TradeRejected(
+        event_id=uuid4(),
+        occurred_at=datetime.now(tz=UTC),
+        trade=_trade(),
+        reason=reason,
     )
 
 
@@ -146,4 +170,73 @@ def _accepts(_: MessagingPort) -> None:
 
 async def test_adapter_satisfies_protocol(bus: NatsMessagingBus) -> None:
     _accepts(bus)
+    await bus.close()
+
+
+async def test_publish_order_approved_received_by_subscriber(bus: NatsMessagingBus) -> None:
+    received: list[bytes] = []
+
+    async def handler(payload: bytes) -> None:
+        received.append(payload)
+
+    await bus.subscribe(OrderApproved.SUBJECT, handler)
+    await bus.publish_order_approved(_order_approved_event())
+    await asyncio.sleep(0.5)
+    assert len(received) == 1
+    await bus.close()
+
+
+async def test_publish_trade_rejected_received_by_subscriber(bus: NatsMessagingBus) -> None:
+    received: list[bytes] = []
+
+    async def handler(payload: bytes) -> None:
+        received.append(payload)
+
+    await bus.subscribe(TradeRejected.SUBJECT, handler)
+    await bus.publish_trade_rejected(_trade_rejected_event())
+    await asyncio.sleep(0.5)
+    assert len(received) == 1
+    await bus.close()
+
+
+async def test_publish_order_approved_dedup_by_event_id(bus: NatsMessagingBus) -> None:
+    """Mesmo event_id -> mesmo Nats-Msg-Id -> JetStream dedupa server-side.
+
+    Usa durable consumer (JetStream) ao invés de ephemeral (NATS core) porque o
+    subscriber ephemeral recebe ambos os publishes via core antes do server
+    completar a dedup; a dedup é visível apenas via leitura JetStream.
+    """
+    received: list[bytes] = []
+
+    async def handler(payload: bytes, num_delivered: int) -> None:
+        received.append(payload)
+
+    durable = f"test-order-dedup-{uuid4().hex[:8]}"
+    await bus.subscribe(OrderApproved.SUBJECT, handler, durable=durable)
+    await asyncio.sleep(0.05)
+
+    event = _order_approved_event()
+    await bus.publish_order_approved(event)
+    await bus.publish_order_approved(event)
+    await asyncio.sleep(0.5)
+    assert len(received) == 1
+    await bus.close()
+
+
+async def test_publish_trade_rejected_dedup_by_event_id(bus: NatsMessagingBus) -> None:
+    """Mesmo event_id -> mesmo Nats-Msg-Id -> JetStream dedupa server-side."""
+    received: list[bytes] = []
+
+    async def handler(payload: bytes, num_delivered: int) -> None:
+        received.append(payload)
+
+    durable = f"test-trade-dedup-{uuid4().hex[:8]}"
+    await bus.subscribe(TradeRejected.SUBJECT, handler, durable=durable)
+    await asyncio.sleep(0.05)
+
+    event = _trade_rejected_event()
+    await bus.publish_trade_rejected(event)
+    await bus.publish_trade_rejected(event)
+    await asyncio.sleep(0.5)
+    assert len(received) == 1
     await bus.close()
