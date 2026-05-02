@@ -108,3 +108,43 @@ def test_metrics_marketdata_markets_tracked_gauge() -> None:
     samples = list(registry.collect())
     matching = [m for m in samples if m.name == "polycopy_marketdata_markets_tracked"]
     assert matching
+
+
+def test_metrics_risk_decisions_counter() -> None:
+    registry = CollectorRegistry()
+    metrics = make_metrics(registry=registry)
+    metrics.risk_decisions_total.labels(result="approved", reason="none").inc()
+    metrics.risk_decisions_total.labels(result="rejected", reason="size_exceeded").inc()
+    samples = list(registry.collect())
+    matching = [m for m in samples if m.name == "polycopy_risk_decisions"]
+    assert len(matching) == 1
+
+
+def test_metrics_risk_decision_duration_histogram() -> None:
+    registry = CollectorRegistry()
+    metrics = make_metrics(registry=registry)
+    metrics.risk_decision_duration_seconds.observe(0.15)
+    samples = list(registry.collect())
+    matching = [m for m in samples if m.name == "polycopy_risk_decision_duration_seconds"]
+    assert matching
+
+
+def test_metrics_market_cache_hits_counter() -> None:
+    registry = CollectorRegistry()
+    metrics = make_metrics(registry=registry)
+    metrics.market_cache_hits_total.labels(result="hit_fresh").inc()
+    metrics.market_cache_hits_total.labels(result="hit_stale").inc()
+    metrics.market_cache_hits_total.labels(result="miss").inc()
+    samples = list(registry.collect())
+    matching = [m for m in samples if m.name == "polycopy_market_cache_hits"]
+    assert len(matching) == 1
+
+
+def test_metrics_risk_lazy_fetch_counter() -> None:
+    registry = CollectorRegistry()
+    metrics = make_metrics(registry=registry)
+    metrics.risk_lazy_fetch_total.labels(result="success").inc()
+    metrics.risk_lazy_fetch_total.labels(result="fail").inc()
+    samples = list(registry.collect())
+    matching = [m for m in samples if m.name == "polycopy_risk_lazy_fetch"]
+    assert len(matching) == 1

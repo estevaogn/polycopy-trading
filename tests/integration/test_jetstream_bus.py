@@ -56,6 +56,7 @@ def _order_approved_event() -> OrderApproved:
     return OrderApproved(
         event_id=uuid4(),
         occurred_at=datetime.now(tz=UTC),
+        decided_at=datetime.now(tz=UTC),
         trade=_trade(),
     )
 
@@ -66,6 +67,7 @@ def _trade_rejected_event(
     return TradeRejected(
         event_id=uuid4(),
         occurred_at=datetime.now(tz=UTC),
+        decided_at=datetime.now(tz=UTC),
         trade=_trade(),
         reason=reason,
     )

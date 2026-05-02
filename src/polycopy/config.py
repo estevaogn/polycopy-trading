@@ -7,6 +7,7 @@ se algo faltar.
 
 from __future__ import annotations
 
+from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
 
@@ -76,6 +77,16 @@ class Settings(BaseSettings):
     marketdata_sync_interval_s: float = Field(300.0, alias="MARKETDATA_SYNC_INTERVAL_SECONDS")
     marketdata_top_n: int = Field(200, alias="MARKETDATA_TOP_N")
     market_cache_ttl_seconds: int = Field(1800, alias="MARKET_CACHE_TTL_SECONDS")
+
+    # Risk agent (Plano 2B)
+    risk_metrics_port: int = Field(9104, alias="RISK_METRICS_PORT")
+    risk_max_deliver: int = Field(5, alias="RISK_MAX_DELIVER")
+    risk_durable_name: str = Field("risk-1", alias="RISK_DURABLE_NAME")
+    risk_max_trade_usdc: Decimal = Field(Decimal("100"), alias="RISK_MAX_TRADE_USDC")
+    risk_min_price: Decimal = Field(Decimal("0.05"), alias="RISK_MIN_PRICE")
+    risk_max_price: Decimal = Field(Decimal("0.95"), alias="RISK_MAX_PRICE")
+    risk_min_liquidity_usdc: Decimal = Field(Decimal("1000"), alias="RISK_MIN_LIQUIDITY_USDC")
+    risk_gamma_fetch_timeout_s: float = Field(5.0, alias="RISK_GAMMA_FETCH_TIMEOUT_S")
 
     @property
     def postgres_dsn(self) -> str:

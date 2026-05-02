@@ -44,6 +44,17 @@ def test_order_approved_requires_tzaware() -> None:
         OrderApproved(
             event_id=uuid4(),
             occurred_at=datetime(2026, 1, 1),  # naive
+            decided_at=datetime.now(tz=UTC),
+            trade=_trade(),
+        )
+
+
+def test_order_approved_requires_tzaware_decided_at() -> None:
+    with pytest.raises(ValidationError):
+        OrderApproved(
+            event_id=uuid4(),
+            occurred_at=datetime.now(tz=UTC),
+            decided_at=datetime(2026, 1, 1),  # naive
             trade=_trade(),
         )
 
@@ -52,6 +63,7 @@ def test_order_approved_frozen() -> None:
     ev = OrderApproved(
         event_id=uuid4(),
         occurred_at=datetime.now(tz=UTC),
+        decided_at=datetime.now(tz=UTC),
         trade=_trade(),
     )
     with pytest.raises(ValidationError):
@@ -67,7 +79,19 @@ def test_trade_rejected_requires_reason() -> None:
         TradeRejected(  # type: ignore[call-arg]
             event_id=uuid4(),
             occurred_at=datetime.now(tz=UTC),
+            decided_at=datetime.now(tz=UTC),
             trade=_trade(),
+        )
+
+
+def test_trade_rejected_requires_tzaware_decided_at() -> None:
+    with pytest.raises(ValidationError):
+        TradeRejected(
+            event_id=uuid4(),
+            occurred_at=datetime.now(tz=UTC),
+            decided_at=datetime(2026, 1, 1),  # naive
+            trade=_trade(),
+            reason=RejectionReason.SIZE_EXCEEDED,
         )
 
 

@@ -254,6 +254,7 @@ Não há. 2A já cobre Gamma/CLOB real schema; Risk é puramente local (regras +
 - **Lazy fetch não tem retry interno** — uma chamada falha = `result=fail` direto. Razão: Gamma client já tem tenacity (3 tentativas) por baixo. Adicionar retry no Risk seria double-retry. Deixar como está.
 - **Sem teste opt-in live** — Risk não bate em internet. Suficiente.
 - **Métrica de "trades aguardando decisão"** (gauge) não incluída — JetStream já expõe lag do durable consumer via NATS metrics (não polycopy_*). Adicionar gauge próprio seria duplicação.
+- **Persist→publish gap (at-least-once delivery não garantido):** se Risk crash entre `repo.insert()` (committed) e `bus.publish()`, o evento NUNCA é publicado — próxima redelivery vê `is_new=False` e skipa publish. NATS `Nats-Msg-Id` dedup protege contra duplicate, não contra missing. Aceito como caveat MVP. Solução real: transactional outbox pattern (gravar evento numa `outbox` table na mesma transação do `risk_decisions`, processo separado lê da outbox e publica com retry). Entra em hardening futuro se downstream Sizing reportar gaps.
 
 ## 12. Self-review (autor da spec)
 

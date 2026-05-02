@@ -31,6 +31,11 @@ class Metrics:
     marketdata_sync_duration_seconds: Histogram
     marketdata_markets_tracked: Gauge
 
+    risk_decisions_total: Counter
+    risk_decision_duration_seconds: Histogram
+    market_cache_hits_total: Counter
+    risk_lazy_fetch_total: Counter
+
 
 def make_metrics(registry: CollectorRegistry | None = None) -> Metrics:
     target = registry if registry is not None else REGISTRY
@@ -102,6 +107,29 @@ def make_metrics(registry: CollectorRegistry | None = None) -> Metrics:
         marketdata_markets_tracked=Gauge(
             "polycopy_marketdata_markets_tracked",
             "Número de mercados sincronizados na última iteração.",
+            registry=target,
+        ),
+        risk_decisions_total=Counter(
+            "polycopy_risk_decisions",
+            "Decisões do RiskAgent.",
+            labelnames=["result", "reason"],
+            registry=target,
+        ),
+        risk_decision_duration_seconds=Histogram(
+            "polycopy_risk_decision_duration_seconds",
+            "Duração end-to-end de uma decisão.",
+            registry=target,
+        ),
+        market_cache_hits_total=Counter(
+            "polycopy_market_cache_hits",
+            "Resultado de leitura do MarketRepository (Plano 2B consumer).",
+            labelnames=["result"],
+            registry=target,
+        ),
+        risk_lazy_fetch_total=Counter(
+            "polycopy_risk_lazy_fetch",
+            "Lazy fetch via Gamma quando cache stale/miss.",
+            labelnames=["result"],
             registry=target,
         ),
     )
