@@ -74,6 +74,7 @@ asyncio_mode = "auto"
 addopts = ["--tb=short", "--strict-markers", "--strict-config"]
 markers = [
     "integration: tests that require running infrastructure (postgres, nats, redis)",
+    "live: requires real internet / Polymarket API (opt-in via PYTEST_LIVE=1)",
 ]
 
 [tool.commitizen]
