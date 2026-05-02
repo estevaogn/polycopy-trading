@@ -11,6 +11,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 from polycopy.domain.events import WalletTradeDetected
+from polycopy.domain.market import Market, OrderBook
 from polycopy.domain.models import Side, Trade
 from polycopy.domain.value_objects import (
     ConditionId,
@@ -20,8 +21,12 @@ from polycopy.domain.value_objects import (
     WalletAddress,
 )
 from polycopy.ports import (
+    CachedMarket,
+    MarketRepository,
     MessagingPort,
+    PolymarketClobPort,
     PolymarketDataPort,
+    PolymarketGammaPort,
     WalletTradeRepository,
 )
 from polycopy.ports.messaging import EventHandler
@@ -82,3 +87,73 @@ def test_ports_importable() -> None:
     assert MessagingPort is not None
     assert PolymarketDataPort is not None
     assert WalletTradeRepository is not None
+
+
+class _FakeClob:
+    """Stub que implementa PolymarketClobPort."""
+
+    async def get_book(self, token_id: TokenId) -> OrderBook:
+        return OrderBook(
+            token_id=token_id,
+            bids=[],
+            asks=[],
+            captured_at=datetime.now(tz=UTC),
+        )
+
+
+class _FakeGamma:
+    """Stub que implementa PolymarketGammaPort."""
+
+    async def get_market(self, token_id: TokenId) -> Market | None:
+        return None
+
+    async def list_active_markets(self, *, limit: int) -> list[Market]:
+        return []
+
+
+class _FakeCachedMarket:
+    """Stub que implementa CachedMarket Protocol."""
+
+    def __init__(self, market: Market) -> None:
+        self.market = market
+        self.last_synced_at = datetime.now(tz=UTC)
+        self.is_stale = False
+
+
+class _FakeMarketRepo:
+    """Stub que implementa MarketRepository."""
+
+    def __init__(self) -> None:
+        self.upserted: list[Market] = []
+
+    async def upsert_many(self, markets: list[Market]) -> int:
+        self.upserted.extend(markets)
+        return len(markets)
+
+    async def get_market(self, token_id: TokenId) -> CachedMarket | None:
+        return None
+
+
+def _accepts_clob(_: PolymarketClobPort) -> None:
+    """Helper: mypy falha aqui se o argumento não satisfizer PolymarketClobPort."""
+
+
+def _accepts_gamma(_: PolymarketGammaPort) -> None:
+    """Helper: mypy falha aqui se o argumento não satisfizer PolymarketGammaPort."""
+
+
+def _accepts_market_repo(_: MarketRepository) -> None:
+    """Helper: mypy falha aqui se o argumento não satisfizer MarketRepository."""
+
+
+def test_fakes_satisfy_new_ports() -> None:
+    _accepts_clob(_FakeClob())
+    _accepts_gamma(_FakeGamma())
+    _accepts_market_repo(_FakeMarketRepo())
+
+
+def test_new_ports_importable() -> None:
+    assert PolymarketClobPort is not None
+    assert PolymarketGammaPort is not None
+    assert MarketRepository is not None
+    assert CachedMarket is not None
