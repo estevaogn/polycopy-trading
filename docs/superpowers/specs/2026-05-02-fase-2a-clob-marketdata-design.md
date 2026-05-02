@@ -93,7 +93,9 @@ CREATE TABLE markets (
     liquidity_usdc    NUMERIC(20, 6),
     last_synced_at    TIMESTAMPTZ NOT NULL,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT markets_outcome_enum CHECK (outcome IN ('Yes', 'No')),
+    CONSTRAINT markets_active_archived_exclusive CHECK (NOT (is_active AND is_archived))
 );
 
 CREATE INDEX idx_markets_condition_id    ON markets (condition_id);
