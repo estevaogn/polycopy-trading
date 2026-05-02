@@ -16,6 +16,10 @@ class Metrics:
     polymarket_requests_total: Counter
     polymarket_request_duration_seconds: Histogram
 
+    # Gamma + CLOB (Plano 2A)
+    polymarket_http_request_duration_seconds: Histogram
+    polymarket_http_requests_total: Counter
+
     watcher_iterations_total: Counter
     watcher_trades_inserted_total: Counter
     watcher_iteration_duration_seconds: Histogram
@@ -37,6 +41,18 @@ def make_metrics(registry: CollectorRegistry | None = None) -> Metrics:
             "polycopy_polymarket_request_duration_seconds",
             "Latência de requests pra Polymarket Data API",
             labelnames=["endpoint"],
+            registry=target,
+        ),
+        polymarket_http_request_duration_seconds=Histogram(
+            "polycopy_polymarket_http_request_duration_seconds",
+            "Latência HTTP por client Polymarket (gamma|clob).",
+            labelnames=["client", "endpoint", "status"],
+            registry=target,
+        ),
+        polymarket_http_requests_total=Counter(
+            "polycopy_polymarket_http_requests",
+            "Total de requests HTTP por client Polymarket (gamma|clob).",
+            labelnames=["client", "endpoint", "status"],
             registry=target,
         ),
         watcher_iterations_total=Counter(

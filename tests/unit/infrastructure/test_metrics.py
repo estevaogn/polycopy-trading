@@ -14,6 +14,8 @@ def test_make_metrics_returns_metrics_instance() -> None:
     registry = CollectorRegistry()
     metrics = make_metrics(registry=registry)
     assert isinstance(metrics, Metrics)
+    assert metrics.polymarket_http_request_duration_seconds is not None
+    assert metrics.polymarket_http_requests_total is not None
 
 
 def test_metrics_polymarket_request_counter_labels() -> None:
