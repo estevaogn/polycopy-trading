@@ -181,9 +181,10 @@ polycopy_http_request_duration_seconds{client="gamma", endpoint, status}   # his
 polycopy_marketdata_sync_total{result="ok"|"fail"}                         # counter
 polycopy_marketdata_sync_duration_seconds                                  # histogram
 polycopy_marketdata_markets_tracked                                        # gauge
-polycopy_market_cache_hits_total{result="hit"|"stale"|"miss"}              # counter
 polycopy_clob_book_fetch_total{result="ok"|"fail"}                         # counter
 ```
+
+**Métrica de cache (`polycopy_market_cache_hits_total{result="hit"|"stale"|"miss"}`) fica fora do 2A.** O `MarketRepository` apenas lê do DB e expõe a flag `is_stale` no `CachedMarket`; quem decide "aceita stale / refaz fetch" é o caller (Risk no Plano 2B). A métrica nasce no consumer junto da decisão. Será especificada no 2B.
 
 A métrica `polycopy_http_request_duration_seconds` já existe (Plano 1B/T3). Estendemos com novos labels `client="clob"|"gamma"` ao invés de criar métricas paralelas — single source of truth.
 
