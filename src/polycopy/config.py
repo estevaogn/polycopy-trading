@@ -67,6 +67,16 @@ class Settings(BaseSettings):
     telegram_bot_token: SecretStr | None = Field(None, alias="TELEGRAM_BOT_TOKEN")
     telegram_chat_id: int | None = Field(None, alias="TELEGRAM_CHAT_ID")
 
+    # Polymarket bases
+    gamma_api_base_url: str = Field("https://gamma-api.polymarket.com", alias="GAMMA_API_BASE_URL")
+    clob_api_base_url: str = Field("https://clob.polymarket.com", alias="CLOB_API_BASE_URL")
+
+    # Market data agent
+    marketdata_metrics_port: int = Field(9103, alias="MARKETDATA_METRICS_PORT")
+    marketdata_sync_interval_s: float = Field(300.0, alias="MARKETDATA_SYNC_INTERVAL_SECONDS")
+    marketdata_top_n: int = Field(200, alias="MARKETDATA_TOP_N")
+    market_cache_ttl_seconds: int = Field(1800, alias="MARKET_CACHE_TTL_SECONDS")
+
     @property
     def postgres_dsn(self) -> str:
         """DSN sync (psycopg-style)."""

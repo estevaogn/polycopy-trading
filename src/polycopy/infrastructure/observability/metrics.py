@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from prometheus_client import REGISTRY, CollectorRegistry, Counter, Histogram
+from prometheus_client import REGISTRY, CollectorRegistry, Counter, Gauge, Histogram
 
 
 @dataclass(frozen=True)
@@ -26,6 +26,10 @@ class Metrics:
 
     notifier_messages_total: Counter
     notifier_send_duration_seconds: Histogram
+
+    marketdata_sync_total: Counter
+    marketdata_sync_duration_seconds: Histogram
+    marketdata_markets_tracked: Gauge
 
 
 def make_metrics(registry: CollectorRegistry | None = None) -> Metrics:
@@ -82,6 +86,22 @@ def make_metrics(registry: CollectorRegistry | None = None) -> Metrics:
         notifier_send_duration_seconds=Histogram(
             "polycopy_notifier_send_duration_seconds",
             "Duração do envio de uma mensagem (incluindo Telegram API)",
+            registry=target,
+        ),
+        marketdata_sync_total=Counter(
+            "polycopy_marketdata_sync",
+            "Iterações de sync do MarketDataAgent.",
+            labelnames=["result"],
+            registry=target,
+        ),
+        marketdata_sync_duration_seconds=Histogram(
+            "polycopy_marketdata_sync_duration_seconds",
+            "Duração de uma iteração de sync.",
+            registry=target,
+        ),
+        marketdata_markets_tracked=Gauge(
+            "polycopy_marketdata_markets_tracked",
+            "Número de mercados sincronizados na última iteração.",
             registry=target,
         ),
     )

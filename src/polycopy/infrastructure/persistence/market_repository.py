@@ -16,10 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from polycopy.domain.market import Market
 from polycopy.domain.value_objects import ConditionId, Money, TokenId
 from polycopy.infrastructure.persistence.models import MarketRow
+from polycopy.ports import CachedMarket
 
 
 @dataclass(frozen=True)
-class _CachedMarket:
+class _CachedMarket(CachedMarket):
     market: Market
     last_synced_at: datetime
     is_stale: bool
@@ -61,7 +62,7 @@ class SqlAlchemyMarketRepository:
         await self._session.flush()
         return len(values)
 
-    async def get_market(self, token_id: TokenId) -> _CachedMarket | None:
+    async def get_market(self, token_id: TokenId) -> CachedMarket | None:
         result = await self._session.execute(
             select(MarketRow).where(MarketRow.token_id == token_id.value)
         )

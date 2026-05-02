@@ -80,3 +80,31 @@ def test_metrics_notifier_send_duration_histogram() -> None:
     samples = list(registry.collect())
     matching = [m for m in samples if m.name == "polycopy_notifier_send_duration_seconds"]
     assert matching
+
+
+def test_metrics_marketdata_sync_counter() -> None:
+    registry = CollectorRegistry()
+    metrics = make_metrics(registry=registry)
+    metrics.marketdata_sync_total.labels(result="ok").inc()
+    metrics.marketdata_sync_total.labels(result="fail").inc()
+    samples = list(registry.collect())
+    matching = [m for m in samples if m.name == "polycopy_marketdata_sync"]
+    assert len(matching) == 1
+
+
+def test_metrics_marketdata_sync_duration_histogram() -> None:
+    registry = CollectorRegistry()
+    metrics = make_metrics(registry=registry)
+    metrics.marketdata_sync_duration_seconds.observe(0.42)
+    samples = list(registry.collect())
+    matching = [m for m in samples if m.name == "polycopy_marketdata_sync_duration_seconds"]
+    assert matching
+
+
+def test_metrics_marketdata_markets_tracked_gauge() -> None:
+    registry = CollectorRegistry()
+    metrics = make_metrics(registry=registry)
+    metrics.marketdata_markets_tracked.set(42)
+    samples = list(registry.collect())
+    matching = [m for m in samples if m.name == "polycopy_marketdata_markets_tracked"]
+    assert matching
