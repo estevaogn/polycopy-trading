@@ -2,11 +2,21 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Index, Integer, Numeric, String
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Uuid,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.sql import func
 from sqlalchemy.sql import text as _sql_text
@@ -90,6 +100,45 @@ class MarketRow(Base):
             "idx_markets_volume_24h",
             _sql_text("volume_24h_usdc DESC NULLS LAST"),
             postgresql_where="is_active = true",
+            postgresql_using="btree",
+        ),
+    )
+
+
+class RiskDecisionRow(Base):
+    __tablename__ = "risk_decisions"
+
+    trade_event_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    wallet: Mapped[str] = mapped_column(String, nullable=False)
+    condition_id: Mapped[str] = mapped_column(String, nullable=False)
+    token_id: Mapped[str] = mapped_column(String, nullable=False)
+    decision: Mapped[str] = mapped_column(String, nullable=False)
+    reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "decision IN ('approved', 'rejected')",
+            name="risk_decisions_decision_enum",
+        ),
+        CheckConstraint(
+            "(decision = 'approved' AND reason IS NULL) "
+            "OR (decision = 'rejected' AND reason IS NOT NULL)",
+            name="risk_decisions_reason_consistency",
+        ),
+        Index(
+            "idx_risk_decisions_wallet_decided_at",
+            "wallet",
+            "decided_at",
+            postgresql_using="btree",
+        ),
+        Index(
+            "idx_risk_decisions_rejected_decided_at",
+            "decided_at",
+            postgresql_where="decision = 'rejected'",
             postgresql_using="btree",
         ),
     )
