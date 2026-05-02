@@ -10,9 +10,15 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import uuid4
 
-from polycopy.domain.events import WalletTradeDetected
+from polycopy.domain.events import (
+    OrderApproved,
+    RejectionReason,
+    TradeRejected,
+    WalletTradeDetected,
+)
 from polycopy.domain.market import Market, OrderBook
 from polycopy.domain.models import Side, Trade
+from polycopy.domain.risk import RiskDecision
 from polycopy.domain.value_objects import (
     ConditionId,
     Money,
@@ -27,6 +33,7 @@ from polycopy.ports import (
     PolymarketClobPort,
     PolymarketDataPort,
     PolymarketGammaPort,
+    RiskDecisionRepository,
     WalletTradeRepository,
 )
 from polycopy.ports.messaging import EventHandler
@@ -40,6 +47,12 @@ class _FakeMessaging:
 
     async def publish_wallet_trade_detected(self, event: WalletTradeDetected) -> None:
         self.published.append(event)
+
+    async def publish_order_approved(self, event: OrderApproved) -> None:
+        return None
+
+    async def publish_trade_rejected(self, event: TradeRejected) -> None:
+        return None
 
     async def subscribe(self, subject: str, handler: EventHandler) -> None:
         return None
@@ -157,3 +170,30 @@ def test_new_ports_importable() -> None:
     assert PolymarketGammaPort is not None
     assert MarketRepository is not None
     assert CachedMarket is not None
+
+
+class _FakeRiskDecisionRepo:
+    """Stub que implementa RiskDecisionRepository."""
+
+    def __init__(self) -> None:
+        self.inserted: list[RiskDecision] = []
+
+    async def insert(self, decision: RiskDecision) -> bool:
+        self.inserted.append(decision)
+        return True
+
+
+def _accepts_risk_decision_repo(_: RiskDecisionRepository) -> None:
+    """Helper: mypy falha aqui se o argumento não satisfizer RiskDecisionRepository."""
+
+
+def test_fake_risk_decision_repo_satisfies_port() -> None:
+    fake = _FakeRiskDecisionRepo()
+    _accepts_risk_decision_repo(fake)
+
+
+def test_risk_ports_importable() -> None:
+    assert RiskDecisionRepository is not None
+    assert OrderApproved is not None
+    assert TradeRejected is not None
+    assert RejectionReason is not None

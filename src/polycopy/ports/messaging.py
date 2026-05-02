@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Protocol
 
-from polycopy.domain.events import WalletTradeDetected
+from polycopy.domain.events import OrderApproved, TradeRejected, WalletTradeDetected
 
 EventHandler = Callable[[bytes], Awaitable[None]]
 """Handler para subscribe ephemeral (sem ack manual)."""
@@ -24,6 +24,14 @@ class MessagingPort(Protocol):
 
     async def publish_wallet_trade_detected(self, event: WalletTradeDetected) -> None:
         """Publica evento no subject `wallet.trade.detected`."""
+        ...
+
+    async def publish_order_approved(self, event: OrderApproved) -> None:
+        """Publica evento no subject `order.approved`."""
+        ...
+
+    async def publish_trade_rejected(self, event: TradeRejected) -> None:
+        """Publica evento no subject `trade.rejected`."""
         ...
 
     async def subscribe(
