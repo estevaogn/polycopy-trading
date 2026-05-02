@@ -10,6 +10,7 @@ posteriores expandem com risk, sizing, executor, etc — ver `PROMPT_POLYCOPY_v2
 flowchart LR
     subgraph external[External]
         PM[Polymarket Data API]
+        GAMMA[Polymarket Gamma API]
         TG[Telegram Bot API]
     end
 
@@ -24,6 +25,7 @@ flowchart LR
         subgraph agents[Agents]
             W[polycopy-watcher]
             N[polycopy-notifier]
+            M[polycopy-marketdata]
         end
     end
 
@@ -32,8 +34,11 @@ flowchart LR
     W -->|publish wallet.trade.detected\nNats-Msg-Id dedup| NATS
     NATS -->|durable consumer notifier-1| N
     N -->|aiogram| TG
+    GAMMA -->|httpx + tenacity| M
+    M -->|upsert markets| PG
     PROM -.->|scrape /metrics:9101| W
     PROM -.->|scrape /metrics:9102| N
+    PROM -.->|scrape /metrics:9103| M
 ```
 
 ## Componentes
@@ -57,6 +62,18 @@ Push durable consumer no JetStream (`durable=notifier-1`, `ack_wait=30s`, `max_d
 2. Resolve label via `wallets_by_address[trade.wallet]`. Wallet desconhecida → `addr[:8]…`.
 3. Formata MarkdownV2 e envia via `aiogram.Bot.send_message`.
 4. Sucesso → `msg.ack()`; falha → não acka → JetStream redelivera. Em `num_delivered == max_deliver` e ainda falha, métrica `dropped_max_deliver` é incrementada.
+
+### MarketDataAgent (Plano 2A)
+
+Agente em background que sincroniza metadata dos top N (default 200) mercados ativos
+da Polymarket Gamma API pra tabela `markets`. Roda a cada `MARKETDATA_SYNC_INTERVAL_SECONDS`
+(default 300s). Falha de sync não derruba copy trading — Risk (Plano 2B) usa lazy fallback
+no `MarketRepository` quando o cache está stale ou ausente.
+
+Métricas: `polycopy_marketdata_sync_total{result}`, `polycopy_marketdata_sync_duration_seconds`,
+`polycopy_marketdata_markets_tracked`.
+
+Container: `polycopy-marketdata`. Endpoint `/metrics`: porta 9103.
 
 ### Bus de eventos
 
@@ -87,6 +104,7 @@ docker compose logs -f watcher notifier
 `/metrics` em:
 - watcher: `http://127.0.0.1:9101/metrics`
 - notifier: `http://127.0.0.1:9102/metrics`
+- marketdata: `http://127.0.0.1:9103/metrics`
 - prometheus UI: `http://127.0.0.1:9090/`
 
 ### Local sem Docker (dev)
@@ -114,6 +132,9 @@ uv run python -m polycopy.agents.notifier
 | `polycopy_watcher_iteration_duration_seconds` | Histogram | `wallet` | watcher |
 | `polycopy_notifier_messages` | Counter | `outcome` (`sent\|telegram_error\|dropped_max_deliver`) | notifier |
 | `polycopy_notifier_send_duration_seconds` | Histogram | — | notifier |
+| `polycopy_marketdata_sync_total` | Counter | `result` (`ok\|fail`) | marketdata |
+| `polycopy_marketdata_sync_duration_seconds` | Histogram | — | marketdata |
+| `polycopy_marketdata_markets_tracked` | Gauge | — | marketdata |
 
 Logs estruturados via `structlog` (JSON em prod, console colorido em dev).
 
