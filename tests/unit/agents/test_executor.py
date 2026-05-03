@@ -619,24 +619,10 @@ def test_stub_executors_satisfy_order_executor_protocol() -> None:
 # ----- main() safety gate -----
 
 
-async def test_main_raises_when_real_mode_requested(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Safety gate: main() raise quando EXECUTOR_DRY_RUN=false.
-    Real-mode (Web3CLOBExecutor) é Fase 4."""
+def _stub_main_side_effects(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stub side effects de main() (logging, metrics server, db engine) para que
+    os testes de safety gate não abram portas, conexões ou sessions reais."""
     from polycopy.agents import executor as executor_module
-
-    monkeypatch.setenv("EXECUTOR_DRY_RUN", "false")
-    # Outras env vars necessárias pra Settings carregar:
-    monkeypatch.setenv("POSTGRES_USER", "test")
-    monkeypatch.setenv("POSTGRES_PASSWORD", "test")
-    monkeypatch.setenv("POSTGRES_DB", "test")
-    monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
-    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
-
-    # Stub side effects ANTES do raise (logging/metrics server/engine) para
-    # não abrir portas/sessions reais — só queremos verificar a porta de safety.
-    # `start_metrics_server` e `make_metrics` são importados no top do módulo;
-    # `configure_logging`, `make_engine`, `make_session_factory` vêm de imports
-    # locais dentro de main() — patch nos módulos de origem.
     from polycopy.infrastructure.observability import logging as _logging_mod
     from polycopy.infrastructure.persistence import database as _db_mod
 
@@ -648,5 +634,108 @@ async def test_main_raises_when_real_mode_requested(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(_db_mod, "make_engine", lambda _settings: object())
     monkeypatch.setattr(_db_mod, "make_session_factory", lambda _engine: object())
 
-    with pytest.raises(RuntimeError, match="Real-mode not yet implemented"):
-        await executor_module.main()
+
+async def test_main_raises_when_real_mode_without_confirmed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Triple safety gate 1: dry_run=false + real_mode_confirmed=false → raise."""
+    from polycopy.agents.executor import main
+
+    monkeypatch.setenv("EXECUTOR_DRY_RUN", "false")
+    monkeypatch.setenv("EXECUTOR_REAL_MODE_CONFIRMED", "false")
+    monkeypatch.setenv("POSTGRES_USER", "test")
+    monkeypatch.setenv("POSTGRES_PASSWORD", "test")
+    monkeypatch.setenv("POSTGRES_DB", "test")
+    monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
+    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+
+    _stub_main_side_effects(monkeypatch)
+
+    with pytest.raises(RuntimeError, match="EXECUTOR_REAL_MODE_CONFIRMED"):
+        await main()
+
+
+async def test_main_raises_when_real_mode_without_private_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Triple safety gate 2: real-mode confirmed sem WALLET_PRIVATE_KEY → raise."""
+    from polycopy.agents.executor import main
+
+    monkeypatch.setenv("EXECUTOR_DRY_RUN", "false")
+    monkeypatch.setenv("EXECUTOR_REAL_MODE_CONFIRMED", "true")
+    # WALLET_PRIVATE_KEY ausente
+    monkeypatch.delenv("WALLET_PRIVATE_KEY", raising=False)
+    monkeypatch.setenv("POSTGRES_USER", "test")
+    monkeypatch.setenv("POSTGRES_PASSWORD", "test")
+    monkeypatch.setenv("POSTGRES_DB", "test")
+    monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
+    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+
+    _stub_main_side_effects(monkeypatch)
+
+    with pytest.raises(RuntimeError, match="WALLET_PRIVATE_KEY"):
+        await main()
+
+
+async def test_main_dry_run_default_does_not_require_wallet(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dry-run default: não exige wallet nem real_mode_confirmed.
+
+    Não vamos rodar main() até o fim (precisa NATS+Postgres). Apenas validamos
+    que o gate não dispara em dry-run.
+    """
+    monkeypatch.setenv("EXECUTOR_DRY_RUN", "true")
+    monkeypatch.delenv("WALLET_PRIVATE_KEY", raising=False)
+    monkeypatch.setenv("POSTGRES_USER", "test")
+    monkeypatch.setenv("POSTGRES_PASSWORD", "test")
+    monkeypatch.setenv("POSTGRES_DB", "test")
+    monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
+    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+
+    # Settings carrega sem erro — gate de dry_run não toca em real-mode checks.
+    from polycopy.config import Settings
+
+    settings = Settings()
+    assert settings.executor_dry_run is True
+    assert settings.wallet_private_key is None
+    assert settings.executor_real_mode_confirmed is False
+    # Esses 3 NÃO bloqueiam dry-run mode.
+
+
+async def test_main_raises_when_allowance_insufficient(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Triple safety gate 3: verify_allowance raise no startup → main() propaga."""
+    from polycopy.agents.executor import main
+
+    test_pk = "0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318"
+    monkeypatch.setenv("EXECUTOR_DRY_RUN", "false")
+    monkeypatch.setenv("EXECUTOR_REAL_MODE_CONFIRMED", "true")
+    monkeypatch.setenv("WALLET_PRIVATE_KEY", test_pk)
+    monkeypatch.setenv("POSTGRES_USER", "test")
+    monkeypatch.setenv("POSTGRES_PASSWORD", "test")
+    monkeypatch.setenv("POSTGRES_DB", "test")
+    monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
+    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+
+    # Stub side effects (start_metrics_server, make_engine, etc) — usar helper existente
+    _stub_main_side_effects(monkeypatch)
+
+    # Patch build_clob_client + verify_allowance pra forçar Gate 3 falhar
+    async def _raises_insufficient(_settings, _min_usdc) -> None:
+        raise RuntimeError("USDC allowance insufficient — run setup_wallet")
+
+    from unittest.mock import MagicMock
+
+    monkeypatch.setattr(
+        "polycopy.infrastructure.execution.web3_clob_executor.build_clob_client",
+        lambda _settings: MagicMock(),
+    )
+    monkeypatch.setattr(
+        "polycopy.infrastructure.execution.web3_clob_executor.verify_allowance",
+        _raises_insufficient,
+    )
+
+    with pytest.raises(RuntimeError, match="USDC allowance insufficient"):
+        await main()

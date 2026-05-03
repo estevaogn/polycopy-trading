@@ -11,8 +11,10 @@ Settings (Plano 3):
     EXECUTOR_METRICS_PORT     default 9106
     EXECUTOR_DURABLE_NAME     default "executor-1"
     EXECUTOR_MAX_DELIVER      default 5
-    EXECUTOR_DRY_RUN          default True  — NUNCA setar False fora da Fase 4
-                                              (raise RuntimeError em main())
+    EXECUTOR_DRY_RUN          default True  — NUNCA setar False sem completar
+                                              runbook docs/runbooks/fase-4-first-real-trade.md
+                                              (3 gates exigidos: REAL_MODE_CONFIRMED +
+                                              WALLET_PRIVATE_KEY + USDC allowance >= daily_max)
 """
 
 from __future__ import annotations
@@ -254,7 +256,6 @@ def _make_repo_factory(
 
 async def main() -> None:
     """Entrypoint: monta dependências, sobe /metrics, registra signal handlers, roda."""
-    from polycopy.infrastructure.execution.dry_run_executor import DryRunExecutor
     from polycopy.infrastructure.messaging.nats_bus import NatsMessagingBus
     from polycopy.infrastructure.observability.logging import configure_logging
     from polycopy.infrastructure.persistence.database import (
@@ -274,9 +275,48 @@ async def main() -> None:
 
     executor: OrderExecutor
     if settings.executor_dry_run:
+        from polycopy.infrastructure.execution.dry_run_executor import DryRunExecutor
+
         executor = DryRunExecutor()
     else:
-        raise RuntimeError("Real-mode not yet implemented — Fase 4 required")
+        # Triple safety gates pra real-mode
+        if not settings.executor_real_mode_confirmed:
+            raise RuntimeError(
+                "Real-mode requires both EXECUTOR_DRY_RUN=false AND "
+                "EXECUTOR_REAL_MODE_CONFIRMED=true (double opt-in)"
+            )
+        if settings.wallet_private_key is None:
+            raise RuntimeError("WALLET_PRIVATE_KEY required for real-mode")
+
+        from polycopy.infrastructure.execution.kill_switch import KillSwitch
+        from polycopy.infrastructure.execution.web3_clob_executor import (
+            Web3CLOBExecutor,
+            build_clob_client,
+            verify_allowance,
+        )
+
+        clob_client = build_clob_client(settings)
+
+        # Verifica allowance suficiente — fail-fast se setup_wallet não rodou.
+        # Threshold = daily_max_usdc ($20 default) — garante que setup_wallet aprovou
+        # o suficiente pra operar pelo menos 1 dia. Reviewer I-1: max_size_usdc ($2)
+        # permitiria setup que duraria 1 trade só.
+        await verify_allowance(settings, settings.executor_daily_max_usdc)
+
+        kill_switch = KillSwitch(
+            max_size_usdc=settings.executor_max_size_usdc,
+            daily_max_usdc=settings.executor_daily_max_usdc,
+            daily_max_trades=settings.executor_daily_max_trades,
+            circuit_breaker_failures=settings.executor_circuit_breaker_failures,
+            pause_file=settings.executor_pause_file,
+        )
+
+        executor = Web3CLOBExecutor(
+            clob_client=clob_client,
+            kill_switch=kill_switch,
+            max_size_usdc=settings.executor_max_size_usdc,
+            metrics=metrics,
+        )
 
     bus = NatsMessagingBus(url=settings.nats_url)
     await bus.connect()
