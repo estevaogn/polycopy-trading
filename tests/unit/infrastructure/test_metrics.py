@@ -206,3 +206,39 @@ def test_metrics_executor_gas_wei_histogram() -> None:
     samples = list(registry.collect())
     matching = [m for m in samples if m.name == "polycopy_executor_gas_wei"]
     assert matching
+
+
+def test_metrics_executor_kill_switch_blocks_counter() -> None:
+    registry = CollectorRegistry()
+    metrics = make_metrics(registry=registry)
+    metrics.executor_kill_switch_blocks_total.labels(reason="manually_paused").inc()
+    samples = list(registry.collect())
+    matching = [m for m in samples if m.name == "polycopy_executor_kill_switch_blocks"]
+    assert len(matching) == 1
+
+
+def test_metrics_executor_clob_request_duration_histogram() -> None:
+    registry = CollectorRegistry()
+    metrics = make_metrics(registry=registry)
+    metrics.executor_clob_request_duration_seconds.labels(result="success").observe(0.1)
+    samples = list(registry.collect())
+    matching = [m for m in samples if m.name == "polycopy_executor_clob_request_duration_seconds"]
+    assert matching
+
+
+def test_metrics_executor_wallet_balance_gauge() -> None:
+    registry = CollectorRegistry()
+    metrics = make_metrics(registry=registry)
+    metrics.executor_wallet_balance_usdc.set(50.0)
+    samples = list(registry.collect())
+    matching = [m for m in samples if m.name == "polycopy_executor_wallet_balance_usdc"]
+    assert matching
+
+
+def test_metrics_executor_consecutive_failures_gauge() -> None:
+    registry = CollectorRegistry()
+    metrics = make_metrics(registry=registry)
+    metrics.executor_consecutive_failures.set(2.0)
+    samples = list(registry.collect())
+    matching = [m for m in samples if m.name == "polycopy_executor_consecutive_failures"]
+    assert matching

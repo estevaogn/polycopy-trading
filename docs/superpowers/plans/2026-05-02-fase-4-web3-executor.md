@@ -1400,6 +1400,12 @@ git add src/polycopy/infrastructure/execution/web3_clob_executor.py \
 git commit -m "feat(execution): add Web3CLOBExecutor + 4 metrics for real on-chain mode"
 ```
 
+**Nota retrospectiva (aplicada em commit do fixer):** T5 também adicionou
+`web3>=7.16.0` ao `pyproject.toml` — dependência transitiva necessária pra
+`verify_allowance` que lê on-chain via Web3.py (py-clob-client não expõe
+método de allowance). T2 do plano original só listava `py-clob-client`.
+A divergência foi aceita pelo controller + reviewer.
+
 ---
 
 ## Task 6: `setup_wallet.py` script + 4 unit tests

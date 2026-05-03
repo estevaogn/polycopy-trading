@@ -43,6 +43,10 @@ class Metrics:
     executor_orders_total: Counter
     executor_decision_duration_seconds: Histogram
     executor_gas_wei: Histogram
+    executor_kill_switch_blocks_total: Counter
+    executor_clob_request_duration_seconds: Histogram
+    executor_wallet_balance_usdc: Gauge
+    executor_consecutive_failures: Gauge
 
 
 def make_metrics(registry: CollectorRegistry | None = None) -> Metrics:
@@ -171,6 +175,29 @@ def make_metrics(registry: CollectorRegistry | None = None) -> Metrics:
             "polycopy_executor_gas_wei",
             "Gas usado em wei (real-mode com result=executed; vazio em dry_run).",
             buckets=(1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12),
+            registry=target,
+        ),
+        executor_kill_switch_blocks_total=Counter(
+            "polycopy_executor_kill_switch_blocks",
+            "Quantas vezes cada camada de kill-switch bloqueou.",
+            labelnames=["reason"],
+            registry=target,
+        ),
+        executor_clob_request_duration_seconds=Histogram(
+            "polycopy_executor_clob_request_duration_seconds",
+            "Latência da chamada ao CLOB API.",
+            labelnames=["result"],
+            registry=target,
+        ),
+        executor_wallet_balance_usdc=Gauge(
+            "polycopy_executor_wallet_balance_usdc",
+            "Saldo USDC atual da wallet — atualizado por main() no startup. "
+            "Snapshot inicial; em produção real, monitorar Polygonscan diretamente.",
+            registry=target,
+        ),
+        executor_consecutive_failures=Gauge(
+            "polycopy_executor_consecutive_failures",
+            "Contador atual do circuit breaker (0=saudável; ≥3=trippado).",
             registry=target,
         ),
     )
