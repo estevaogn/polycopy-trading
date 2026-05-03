@@ -12,13 +12,17 @@ from uuid import uuid4
 
 from polycopy.domain.events import (
     OrderApproved,
+    OrderSized,
+    OrderSkipped,
     RejectionReason,
+    SkipReason,
     TradeRejected,
     WalletTradeDetected,
 )
 from polycopy.domain.market import Market, OrderBook
 from polycopy.domain.models import Side, Trade
 from polycopy.domain.risk import RiskDecision
+from polycopy.domain.sizing import OrderSizing
 from polycopy.domain.value_objects import (
     ConditionId,
     Money,
@@ -30,6 +34,7 @@ from polycopy.ports import (
     CachedMarket,
     MarketRepository,
     MessagingPort,
+    OrderSizingRepository,
     PolymarketClobPort,
     PolymarketDataPort,
     PolymarketGammaPort,
@@ -52,6 +57,12 @@ class _FakeMessaging:
         return None
 
     async def publish_trade_rejected(self, event: TradeRejected) -> None:
+        return None
+
+    async def publish_order_sized(self, event: OrderSized) -> None:
+        return None
+
+    async def publish_order_skipped(self, event: OrderSkipped) -> None:
         return None
 
     async def subscribe(self, subject: str, handler: EventHandler) -> None:
@@ -197,3 +208,30 @@ def test_risk_ports_importable() -> None:
     assert OrderApproved is not None
     assert TradeRejected is not None
     assert RejectionReason is not None
+
+
+class _FakeOrderSizingRepo:
+    """Stub que implementa OrderSizingRepository."""
+
+    def __init__(self) -> None:
+        self.inserted: list[OrderSizing] = []
+
+    async def insert(self, sizing: OrderSizing) -> bool:
+        self.inserted.append(sizing)
+        return True
+
+
+def _accepts_order_sizing_repo(_: OrderSizingRepository) -> None:
+    """Helper: mypy falha aqui se o argumento não satisfizer OrderSizingRepository."""
+
+
+def test_fake_order_sizing_repo_satisfies_port() -> None:
+    fake = _FakeOrderSizingRepo()
+    _accepts_order_sizing_repo(fake)
+
+
+def test_sizing_ports_importable() -> None:
+    assert OrderSizingRepository is not None
+    assert OrderSized is not None
+    assert OrderSkipped is not None
+    assert SkipReason is not None

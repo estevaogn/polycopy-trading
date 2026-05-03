@@ -2,6 +2,7 @@
 
 from polycopy.ports.market_repository import CachedMarket, MarketRepository
 from polycopy.ports.messaging import MessagingPort
+from polycopy.ports.order_sizing_repository import OrderSizingRepository
 from polycopy.ports.polymarket_clob import PolymarketClobPort
 from polycopy.ports.polymarket_data import PolymarketDataPort
 from polycopy.ports.polymarket_gamma import PolymarketGammaPort
@@ -12,6 +13,7 @@ __all__ = [
     "CachedMarket",
     "MarketRepository",
     "MessagingPort",
+    "OrderSizingRepository",
     "PolymarketClobPort",
     "PolymarketDataPort",
     "PolymarketGammaPort",

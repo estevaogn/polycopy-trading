@@ -33,7 +33,13 @@ from nats.js.api import (
 )
 from nats.js.errors import BadRequestError
 
-from polycopy.domain.events import OrderApproved, TradeRejected, WalletTradeDetected
+from polycopy.domain.events import (
+    OrderApproved,
+    OrderSized,
+    OrderSkipped,
+    TradeRejected,
+    WalletTradeDetected,
+)
 from polycopy.infrastructure.observability.logging import get_logger
 from polycopy.ports.messaging import DurableEventHandler, EventHandler
 
@@ -119,6 +125,24 @@ class NatsMessagingBus:
         payload = event.model_dump_json().encode("utf-8")
         await js.publish(
             TradeRejected.SUBJECT,
+            payload,
+            headers={"Nats-Msg-Id": str(event.event_id)},
+        )
+
+    async def publish_order_sized(self, event: OrderSized) -> None:
+        _, js = self._require_connected()
+        payload = event.model_dump_json().encode("utf-8")
+        await js.publish(
+            OrderSized.SUBJECT,
+            payload,
+            headers={"Nats-Msg-Id": str(event.event_id)},
+        )
+
+    async def publish_order_skipped(self, event: OrderSkipped) -> None:
+        _, js = self._require_connected()
+        payload = event.model_dump_json().encode("utf-8")
+        await js.publish(
+            OrderSkipped.SUBJECT,
             payload,
             headers={"Nats-Msg-Id": str(event.event_id)},
         )
