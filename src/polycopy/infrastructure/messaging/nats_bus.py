@@ -52,6 +52,11 @@ _STREAM_MAX_AGE_S = 7 * 24 * 3600
 _RISK_STREAM_NAME = "RISK_DECISIONS"
 _RISK_STREAM_SUBJECTS = ["order.approved", "trade.rejected"]
 
+_SIZING_STREAM_NAME = "SIZING_DECISIONS"
+# Subjects literais (não wildcard `order.*`) pra evitar colisão com `order.approved`
+# do stream RISK_DECISIONS — decisão fixada em 2B-T5 fix I1.
+_SIZING_STREAM_SUBJECTS = ["order.sized", "order.skipped"]
+
 
 class NatsMessagingBus:
     """Adapter JetStream de `MessagingPort`."""
@@ -74,30 +79,31 @@ class NatsMessagingBus:
             raise RuntimeError("NatsMessagingBus not connected; call connect() first")
         return self._nc, self._js
 
+    @staticmethod
+    def _make_stream_config(name: str, subjects: list[str]) -> StreamConfig:
+        # 5min duplicate_window: dedup server-side por Nats-Msg-Id
+        # (tx_hash:log_index pra wallet trades; event_id UUID pros demais).
+        return StreamConfig(
+            name=name,
+            subjects=subjects,
+            retention=RetentionPolicy.LIMITS,
+            max_age=_STREAM_MAX_AGE_S,
+            storage=StorageType.FILE,
+            num_replicas=1,
+            duplicate_window=300,
+        )
+
     async def _ensure_streams(self) -> None:
-        """Garante que ambos os streams existem (idempotente)."""
+        """Garante que todos os streams JetStream existem (idempotente)."""
         _, js = self._require_connected()
 
-        wallet_config = StreamConfig(
-            name=_STREAM_NAME,
-            subjects=_STREAM_SUBJECTS,
-            retention=RetentionPolicy.LIMITS,
-            max_age=_STREAM_MAX_AGE_S,
-            storage=StorageType.FILE,
-            num_replicas=1,
-            duplicate_window=300,  # 5min: dedup window por Nats-Msg-Id
-        )
-        risk_config = StreamConfig(
-            name=_RISK_STREAM_NAME,
-            subjects=_RISK_STREAM_SUBJECTS,
-            retention=RetentionPolicy.LIMITS,
-            max_age=_STREAM_MAX_AGE_S,
-            storage=StorageType.FILE,
-            num_replicas=1,
-            duplicate_window=300,  # 5min: dedup window por Nats-Msg-Id (event_id UUID)
-        )
+        configs = [
+            self._make_stream_config(_STREAM_NAME, _STREAM_SUBJECTS),
+            self._make_stream_config(_RISK_STREAM_NAME, _RISK_STREAM_SUBJECTS),
+            self._make_stream_config(_SIZING_STREAM_NAME, _SIZING_STREAM_SUBJECTS),
+        ]
         # Streams podem já existir com config compatível — BadRequestError é benigno.
-        for config in (wallet_config, risk_config):
+        for config in configs:
             with contextlib.suppress(BadRequestError):
                 await js.add_stream(config=config)
 
