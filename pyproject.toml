@@ -69,6 +69,12 @@ plugins = ["pydantic.mypy"]
 init_forbid_extra = true
 init_typed = true
 
+# py-clob-client (oficial Polymarket) não tem py.typed marker nem stubs publicados.
+# Reusado em order_mapper, web3_clob_executor e setup_wallet (Fase 4).
+[[tool.mypy.overrides]]
+module = "py_clob_client.*"
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
