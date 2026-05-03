@@ -104,6 +104,43 @@ class Settings(BaseSettings):
     """DRY-RUN by default — Fase 3 MVP. Set to false ONLY after Fase 4
     real-mode (Web3CLOBExecutor) is implemented + tested on testnet."""
 
+    # --- Fase 4 — Real on-chain execution (DANGER ZONE) ---
+    # Wallet (real-mode only — None default fail-fast)
+    wallet_private_key: SecretStr | None = Field(None, alias="WALLET_PRIVATE_KEY")
+
+    # Polygon network
+    polygon_rpc_url: str = Field(
+        "https://polygon-mainnet.g.alchemy.com/v2/YOUR_KEY",
+        alias="POLYGON_RPC_URL",
+    )
+    polygon_chain_id: int = Field(137, alias="POLYGON_CHAIN_ID")
+
+    # Polymarket contracts (Polygon mainnet)
+    polymarket_exchange_address: str = Field(
+        "0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e",
+        alias="POLYMARKET_EXCHANGE_ADDRESS",
+    )
+    polymarket_clob_api_url: str = Field(
+        "https://clob.polymarket.com",
+        alias="POLYMARKET_CLOB_API_URL",
+    )
+
+    # Executor real-mode safety gate (double opt-in)
+    executor_real_mode_confirmed: bool = Field(False, alias="EXECUTOR_REAL_MODE_CONFIRMED")
+
+    # Approval cap (run setup_wallet script once after funding)
+    max_approval_usdc: int = Field(100, alias="MAX_APPROVAL_USDC")
+
+    # Kill-switches (5 camadas)
+    executor_max_size_usdc: Decimal = Field(Decimal("2"), alias="EXECUTOR_MAX_SIZE_USDC")
+    executor_daily_max_usdc: Decimal = Field(Decimal("20"), alias="EXECUTOR_DAILY_MAX_USDC")
+    executor_daily_max_trades: int = Field(10, alias="EXECUTOR_DAILY_MAX_TRADES")
+    executor_circuit_breaker_failures: int = Field(3, alias="EXECUTOR_CIRCUIT_BREAKER_FAILURES")
+    executor_pause_file: Path = Field(
+        Path("/tmp/polycopy/executor.pause"),  # noqa: S108 — default sobrescrevível via env
+        alias="EXECUTOR_PAUSE_FILE",
+    )
+
     @property
     def postgres_dsn(self) -> str:
         """DSN sync (psycopg-style)."""
