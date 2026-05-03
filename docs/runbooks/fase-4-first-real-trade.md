@@ -3,6 +3,23 @@
 **Audiência:** operador humano (você).
 **Quando usar:** após deploy completo da Fase 4 (T1-T7 commitados, container `polycopy-executor` rodando), antes de ativar real-mode pela primeira vez.
 
+## ⚠️ Pré-requisito CRÍTICO de IP — Polymarket bloqueia datacenter
+
+Polymarket usa Cloudflare WAF que **bloqueia rotas POST autenticadas** vindas de IPs de datacenter (Hetzner, AWS, GCP, Digital Ocean, OVH, Vultr, etc.). Sintomas confirmados em 2026-05-03 testando da Hetzner:
+
+- `GET /markets` (read-only) → 200 OK
+- `POST /auth/api-key` (`create_or_derive_api_creds`) → **403 Cloudflare** ("Sorry, you have been blocked")
+- `POST /order` (`Web3CLOBExecutor.post_order`) → mesma classe de rota; bloqueado também (não testado, mas mesmo padrão)
+
+**Implicação:** real-mode **NÃO funciona deste host** (Hetzner ou qualquer datacenter). Pra ativar real-mode, deployment precisa rodar de:
+
+- **IP residencial** (laptop em casa, NAS doméstico, Raspberry Pi atrás do roteador) — solução recomendada e sem custo recorrente.
+- **VPN com exit node residencial** (Mullvad, Proton, PIA — ~$5-15/mês) — funciona mas adiciona latência variável.
+
+DRY-RUN funciona em qualquer IP (não chama POST autenticado) — pipeline coleta dados ininterruptamente em datacenter.
+
+**Setup atual (2026-05-03):** wallet `0x3dE03D234E1931368B70fEce6c9387A734d938Df` configurada, fundada (MATIC + 24.79 USDC.e), allowance 100 USDC aprovada via tx [`0x5d533f...`](https://polygonscan.com/tx/0x5d533f323f6da16c766c34d6f2a2d003dafe42e18a170d5270c7ce6e651e3ba5). Real-mode bloqueado por IP datacenter — wallet pronta pra quando deployment migrar pra IP residencial.
+
 ## Pré-requisitos
 
 - [x] `polycopy-executor` container rodando em DRY-RUN (default).
