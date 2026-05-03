@@ -36,6 +36,10 @@ class Metrics:
     market_cache_hits_total: Counter
     risk_lazy_fetch_total: Counter
 
+    sizing_decisions_total: Counter
+    sizing_decision_duration_seconds: Histogram
+    sizing_size_ratio_observed: Histogram
+
 
 def make_metrics(registry: CollectorRegistry | None = None) -> Metrics:
     target = registry if registry is not None else REGISTRY
@@ -130,6 +134,22 @@ def make_metrics(registry: CollectorRegistry | None = None) -> Metrics:
             "polycopy_risk_lazy_fetch",
             "Lazy fetch via Gamma quando cache stale/miss.",
             labelnames=["result"],
+            registry=target,
+        ),
+        sizing_decisions_total=Counter(
+            "polycopy_sizing_decisions",
+            "Decisões do SizingAgent.",
+            labelnames=["result", "reason"],
+            registry=target,
+        ),
+        sizing_decision_duration_seconds=Histogram(
+            "polycopy_sizing_decision_duration_seconds",
+            "Duração end-to-end de uma decisão de sizing.",
+            registry=target,
+        ),
+        sizing_size_ratio_observed=Histogram(
+            "polycopy_sizing_size_ratio_observed",
+            "Razão final_size / original_size observada por decisão sized.",
             registry=target,
         ),
     )

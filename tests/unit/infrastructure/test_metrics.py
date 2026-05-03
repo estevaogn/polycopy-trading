@@ -148,3 +148,31 @@ def test_metrics_risk_lazy_fetch_counter() -> None:
     samples = list(registry.collect())
     matching = [m for m in samples if m.name == "polycopy_risk_lazy_fetch"]
     assert len(matching) == 1
+
+
+def test_metrics_sizing_decisions_counter() -> None:
+    registry = CollectorRegistry()
+    metrics = make_metrics(registry=registry)
+    metrics.sizing_decisions_total.labels(result="sized", reason="none").inc()
+    metrics.sizing_decisions_total.labels(result="skipped", reason="below_min_size").inc()
+    samples = list(registry.collect())
+    matching = [m for m in samples if m.name == "polycopy_sizing_decisions"]
+    assert len(matching) == 1
+
+
+def test_metrics_sizing_duration_histogram() -> None:
+    registry = CollectorRegistry()
+    metrics = make_metrics(registry=registry)
+    metrics.sizing_decision_duration_seconds.observe(0.05)
+    samples = list(registry.collect())
+    matching = [m for m in samples if m.name == "polycopy_sizing_decision_duration_seconds"]
+    assert matching
+
+
+def test_metrics_sizing_size_ratio_histogram() -> None:
+    registry = CollectorRegistry()
+    metrics = make_metrics(registry=registry)
+    metrics.sizing_size_ratio_observed.observe(0.1)
+    samples = list(registry.collect())
+    matching = [m for m in samples if m.name == "polycopy_sizing_size_ratio_observed"]
+    assert matching

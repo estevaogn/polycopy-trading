@@ -88,6 +88,14 @@ class Settings(BaseSettings):
     risk_min_liquidity_usdc: Decimal = Field(Decimal("1000"), alias="RISK_MIN_LIQUIDITY_USDC")
     risk_gamma_fetch_timeout_s: float = Field(5.0, alias="RISK_GAMMA_FETCH_TIMEOUT_S")
 
+    # Sizing agent (Plano 2C)
+    sizing_metrics_port: int = Field(9105, alias="SIZING_METRICS_PORT")
+    sizing_max_deliver: int = Field(5, alias="SIZING_MAX_DELIVER")
+    sizing_durable_name: str = Field("sizing-1", alias="SIZING_DURABLE_NAME")
+    sizing_proportion_ratio: Decimal = Field(Decimal("0.1"), alias="SIZING_PROPORTION_RATIO")
+    sizing_max_size_usdc: Decimal = Field(Decimal("50"), alias="SIZING_MAX_SIZE_USDC")
+    sizing_min_size_usdc: Decimal = Field(Decimal("1"), alias="SIZING_MIN_SIZE_USDC")
+
     @property
     def postgres_dsn(self) -> str:
         """DSN sync (psycopg-style)."""
