@@ -188,3 +188,119 @@ class OrderSkipped(BaseModel):
         if v.tzinfo is None:
             raise ValueError("decided_at must be timezone-aware")
         return v
+
+
+class ExecutionMode(StrEnum):
+    """Modo de execução do ExecutorAgent."""
+
+    REAL = "real"
+    DRY_RUN = "dry_run"
+
+
+class FailureReason(StrEnum):
+    """Razões pelas quais Executor falha. Aberto pra extensão (Fase 4)."""
+
+    INVALID_TRADE_PARAMS = "invalid_trade_params"
+    EXECUTOR_DISABLED = "executor_disabled"
+
+
+class OrderExecuted(BaseModel):
+    """Evento publicado quando Executor submete trade real on-chain com sucesso.
+
+    NATS subject: `order.executed`. `tx_hash` é a transação on-chain (Polygon).
+    """
+
+    SUBJECT: ClassVar[str] = "order.executed"
+    model_config = ConfigDict(frozen=True, strict=True)
+
+    event_id: UUID
+    occurred_at: datetime
+    decided_at: datetime
+    trade: Trade
+    final_size_usdc: Money
+    tx_hash: str
+    gas_wei: int
+
+    @field_validator("occurred_at", mode="after")
+    @classmethod
+    def _require_tzaware_occurred(cls, v: datetime) -> datetime:
+        if v.tzinfo is None:
+            raise ValueError("occurred_at must be timezone-aware")
+        return v
+
+    @field_validator("decided_at", mode="after")
+    @classmethod
+    def _require_tzaware_decided(cls, v: datetime) -> datetime:
+        if v.tzinfo is None:
+            raise ValueError("decided_at must be timezone-aware")
+        return v
+
+    @field_validator("gas_wei", mode="after")
+    @classmethod
+    def _gas_non_negative(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("gas_wei must be non-negative")
+        return v
+
+
+class OrderFailed(BaseModel):
+    """Evento publicado quando Executor tenta submeter trade real e falha.
+
+    NATS subject: `order.failed`. Inclui `reason` + `error_message` pra audit.
+    """
+
+    SUBJECT: ClassVar[str] = "order.failed"
+    model_config = ConfigDict(frozen=True, strict=True)
+
+    event_id: UUID
+    occurred_at: datetime
+    decided_at: datetime
+    trade: Trade
+    final_size_usdc: Money
+    reason: FailureReason
+    error_message: str
+
+    @field_validator("occurred_at", mode="after")
+    @classmethod
+    def _require_tzaware_occurred(cls, v: datetime) -> datetime:
+        if v.tzinfo is None:
+            raise ValueError("occurred_at must be timezone-aware")
+        return v
+
+    @field_validator("decided_at", mode="after")
+    @classmethod
+    def _require_tzaware_decided(cls, v: datetime) -> datetime:
+        if v.tzinfo is None:
+            raise ValueError("decided_at must be timezone-aware")
+        return v
+
+
+class OrderDryRun(BaseModel):
+    """Evento publicado quando Executor simula trade em modo dry-run.
+
+    NATS subject: `order.dry_run`. Sem dados de tx — apenas snapshot do
+    que teria sido feito.
+    """
+
+    SUBJECT: ClassVar[str] = "order.dry_run"
+    model_config = ConfigDict(frozen=True, strict=True)
+
+    event_id: UUID
+    occurred_at: datetime
+    decided_at: datetime
+    trade: Trade
+    final_size_usdc: Money
+
+    @field_validator("occurred_at", mode="after")
+    @classmethod
+    def _require_tzaware_occurred(cls, v: datetime) -> datetime:
+        if v.tzinfo is None:
+            raise ValueError("occurred_at must be timezone-aware")
+        return v
+
+    @field_validator("decided_at", mode="after")
+    @classmethod
+    def _require_tzaware_decided(cls, v: datetime) -> datetime:
+        if v.tzinfo is None:
+            raise ValueError("decided_at must be timezone-aware")
+        return v
