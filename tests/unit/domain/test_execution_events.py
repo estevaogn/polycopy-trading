@@ -283,9 +283,9 @@ def test_order_execution_real_executed_ok() -> None:
     assert ex.result == "executed"
 
 
-# Invariante 2: mode == DRY_RUN ↔ result == "dry_run"
+# Invariante 2: mode == DRY_RUN ↔ result IN {"dry_run", "failed"}
 def test_order_execution_dry_run_executed_result_raises() -> None:
-    with pytest.raises(ValueError, match="dry_run mode must produce result='dry_run'"):
+    with pytest.raises(ValueError, match=r"dry_run mode must produce result='dry_run' or 'failed'"):
         _execution_dry_run(result="executed", tx_hash="0x" + "ee" * 32)
 
 
@@ -293,6 +293,19 @@ def test_order_execution_dry_run_ok() -> None:
     ex = _execution_dry_run()
     assert ex.mode == ExecutionMode.DRY_RUN
     assert ex.result == "dry_run"
+
+
+def test_order_execution_dry_run_with_failed_is_valid() -> None:
+    """C-1 fix: dry_run mode + result='failed' agora é válido (executor stub raise)."""
+    ex = _execution_dry_run(
+        result="failed",
+        failure_reason=FailureReason.EXECUTOR_DISABLED,
+        error_message="executor raised",
+    )
+    assert ex.mode == ExecutionMode.DRY_RUN
+    assert ex.result == "failed"
+    assert ex.failure_reason == FailureReason.EXECUTOR_DISABLED
+    assert ex.error_message == "executor raised"
 
 
 # Invariante 3: result == "executed" → tx_hash IS NOT NULL

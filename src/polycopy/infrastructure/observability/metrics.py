@@ -40,6 +40,10 @@ class Metrics:
     sizing_decision_duration_seconds: Histogram
     sizing_size_ratio_observed: Histogram
 
+    executor_orders_total: Counter
+    executor_decision_duration_seconds: Histogram
+    executor_gas_wei: Histogram
+
 
 def make_metrics(registry: CollectorRegistry | None = None) -> Metrics:
     target = registry if registry is not None else REGISTRY
@@ -150,6 +154,23 @@ def make_metrics(registry: CollectorRegistry | None = None) -> Metrics:
         sizing_size_ratio_observed=Histogram(
             "polycopy_sizing_size_ratio_observed",
             "Razão final_size / original_size observada por decisão sized.",
+            registry=target,
+        ),
+        executor_orders_total=Counter(
+            "polycopy_executor_orders",
+            "Decisões do ExecutorAgent.",
+            labelnames=["result", "mode", "reason"],
+            registry=target,
+        ),
+        executor_decision_duration_seconds=Histogram(
+            "polycopy_executor_decision_duration_seconds",
+            "Duração end-to-end de uma decisão de execução.",
+            registry=target,
+        ),
+        executor_gas_wei=Histogram(
+            "polycopy_executor_gas_wei",
+            "Gas usado em wei (real-mode com result=executed; vazio em dry_run).",
+            buckets=(1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12),
             registry=target,
         ),
     )

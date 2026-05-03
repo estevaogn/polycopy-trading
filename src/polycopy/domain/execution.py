@@ -33,7 +33,8 @@ class OrderExecution:
 
     Invariantes:
     - mode == REAL ↔ result ∈ {executed, failed}
-    - mode == DRY_RUN ↔ result == "dry_run"
+    - mode == DRY_RUN ↔ result IN {"dry_run", "failed"}
+        (failed só quando executor stub lança exception)
     - result == "executed" → tx_hash IS NOT NULL
     - result == "failed" → failure_reason IS NOT NULL AND error_message IS NOT NULL
     - result == "dry_run" → tx_hash IS NULL AND gas_wei IS NULL AND failure_reason IS NULL
@@ -57,8 +58,8 @@ class OrderExecution:
             if self.result not in ("executed", "failed"):
                 raise ValueError("real mode must produce executed or failed")
         else:  # DRY_RUN
-            if self.result != "dry_run":
-                raise ValueError("dry_run mode must produce result='dry_run'")
+            if self.result not in ("dry_run", "failed"):
+                raise ValueError("dry_run mode must produce result='dry_run' or 'failed'")
 
         if self.result == "executed" and self.tx_hash is None:
             raise ValueError("executed result must have tx_hash")

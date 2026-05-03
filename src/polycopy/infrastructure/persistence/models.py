@@ -219,7 +219,7 @@ class OrderExecutionRow(Base):
         ),
         CheckConstraint(
             "(mode = 'real' AND result IN ('executed', 'failed')) "
-            "OR (mode = 'dry_run' AND result = 'dry_run')",
+            "OR (mode = 'dry_run' AND result IN ('dry_run', 'failed'))",
             name="order_executions_mode_result_consistency",
         ),
         CheckConstraint(

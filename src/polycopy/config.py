@@ -96,6 +96,14 @@ class Settings(BaseSettings):
     sizing_max_size_usdc: Decimal = Field(Decimal("50"), alias="SIZING_MAX_SIZE_USDC")
     sizing_min_size_usdc: Decimal = Field(Decimal("1"), alias="SIZING_MIN_SIZE_USDC")
 
+    # Executor agent (Plano 3 — DRY-RUN MVP)
+    executor_metrics_port: int = Field(9106, alias="EXECUTOR_METRICS_PORT")
+    executor_max_deliver: int = Field(5, alias="EXECUTOR_MAX_DELIVER")
+    executor_durable_name: str = Field("executor-1", alias="EXECUTOR_DURABLE_NAME")
+    executor_dry_run: bool = Field(True, alias="EXECUTOR_DRY_RUN")
+    """DRY-RUN by default — Fase 3 MVP. Set to false ONLY after Fase 4
+    real-mode (Web3CLOBExecutor) is implemented + tested on testnet."""
+
     @property
     def postgres_dsn(self) -> str:
         """DSN sync (psycopg-style)."""

@@ -176,3 +176,33 @@ def test_metrics_sizing_size_ratio_histogram() -> None:
     samples = list(registry.collect())
     matching = [m for m in samples if m.name == "polycopy_sizing_size_ratio_observed"]
     assert matching
+
+
+def test_metrics_executor_orders_counter() -> None:
+    registry = CollectorRegistry()
+    metrics = make_metrics(registry=registry)
+    metrics.executor_orders_total.labels(result="dry_run", mode="dry_run", reason="none").inc()
+    metrics.executor_orders_total.labels(
+        result="failed", mode="real", reason="executor_disabled"
+    ).inc()
+    samples = list(registry.collect())
+    matching = [m for m in samples if m.name == "polycopy_executor_orders"]
+    assert len(matching) == 1
+
+
+def test_metrics_executor_decision_duration_histogram() -> None:
+    registry = CollectorRegistry()
+    metrics = make_metrics(registry=registry)
+    metrics.executor_decision_duration_seconds.observe(0.05)
+    samples = list(registry.collect())
+    matching = [m for m in samples if m.name == "polycopy_executor_decision_duration_seconds"]
+    assert matching
+
+
+def test_metrics_executor_gas_wei_histogram() -> None:
+    registry = CollectorRegistry()
+    metrics = make_metrics(registry=registry)
+    metrics.executor_gas_wei.observe(1e8)
+    samples = list(registry.collect())
+    matching = [m for m in samples if m.name == "polycopy_executor_gas_wei"]
+    assert matching
