@@ -28,6 +28,7 @@ flowchart LR
             M[polycopy-marketdata]
             R[polycopy-risk]
             S[polycopy-sizing]
+            E[polycopy-executor]
         end
     end
 
@@ -46,11 +47,15 @@ flowchart LR
     NATS -->|durable consumer sizing-1\norder.approved| S
     S -->|insert order_sizings\nPK trade_event_id| PG
     S -->|publish order.sized\nor order.skipped| NATS
+    NATS -->|durable consumer executor-1\norder.sized| E
+    E -->|insert order_executions\nPK trade_event_id| PG
+    E -->|publish order.executed\norder.failed or order.dry_run| NATS
     PROM -.->|scrape /metrics:9101| W
     PROM -.->|scrape /metrics:9102| N
     PROM -.->|scrape /metrics:9103| M
     PROM -.->|scrape /metrics:9104| R
     PROM -.->|scrape /metrics:9105| S
+    PROM -.->|scrape /metrics:9106| E
 ```
 
 ## Componentes
@@ -112,6 +117,21 @@ Métricas: `polycopy_sizing_decisions_total{result, reason}`, `polycopy_sizing_d
 
 Container: `polycopy-sizing`. Endpoint `/metrics`: porta 9105.
 
+### ExecutorAgent (Plano 3 — DRY-RUN MVP)
+
+Última peça do pipeline. Consome `order.sized`, chama `OrderExecutor.execute()`
+strategy injetado, persiste decisão em `order_executions` (idempotente via PK
+`trade_event_id`), publica `order.executed`, `order.failed` ou `order.dry_run`.
+
+**MVP é DRY-RUN apenas** (`EXECUTOR_DRY_RUN=true` default). `DryRunExecutor`
+sempre retorna sucesso simulado — sem chamadas blockchain. Real-mode
+(`Web3CLOBExecutor` com EIP-712 + Polygon) é Fase 4 inteira.
+
+Métricas: `polycopy_executor_orders_total{result, mode, reason}`,
+`polycopy_executor_decision_duration_seconds`, `polycopy_executor_gas_wei`.
+
+Container: `polycopy-executor`. Endpoint `/metrics`: porta 9106.
+
 ### Bus de eventos
 
 `NatsMessagingBus` (`src/polycopy/infrastructure/messaging/nats_bus.py`) cria stream `WALLET_TRADES` (subject filter `wallet.trade.>`, max_age 7d, file storage, replicas 1) idempotentemente em `connect()`. Suporta:
@@ -144,6 +164,7 @@ docker compose logs -f watcher notifier
 - marketdata: `http://127.0.0.1:9103/metrics`
 - risk: `http://127.0.0.1:9104/metrics`
 - sizing: `http://127.0.0.1:9105/metrics`
+- executor: `http://127.0.0.1:9106/metrics`
 - prometheus UI: `http://127.0.0.1:9090/`
 
 ### Local sem Docker (dev)
@@ -181,6 +202,9 @@ uv run python -m polycopy.agents.notifier
 | `polycopy_sizing_decisions_total` | Counter | `result` (`sized\|skipped`), `reason` | sizing |
 | `polycopy_sizing_decision_duration_seconds` | Histogram | — | sizing |
 | `polycopy_sizing_size_ratio_observed` | Histogram | — | sizing |
+| `polycopy_executor_orders_total` | Counter | `result` (`executed\|failed\|dry_run`), `mode`, `reason` | executor |
+| `polycopy_executor_decision_duration_seconds` | Histogram | — | executor |
+| `polycopy_executor_gas_wei` | Histogram | — | executor |
 
 Logs estruturados via `structlog` (JSON em prod, console colorido em dev).
 

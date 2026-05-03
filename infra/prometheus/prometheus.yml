@@ -20,3 +20,6 @@ scrape_configs:
   - job_name: polycopy-sizing
     static_configs:
       - targets: ['polycopy-sizing:9105']
+  - job_name: polycopy-executor
+    static_configs:
+      - targets: ['polycopy-executor:9106']
