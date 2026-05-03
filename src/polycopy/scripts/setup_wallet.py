@@ -97,7 +97,10 @@ def _approve_usdc(
     nonce = web3.eth.get_transaction_count(Web3.to_checksum_address(wallet_address))
     gas_price = web3.eth.gas_price
     cap_micro = max_approval_usdc * 10**6
-    tx = usdc_contract.functions.approve(exchange_address, cap_micro).build_transaction(
+    # web3.py v7+ exige checksum address — settings traz lowercase
+    tx = usdc_contract.functions.approve(
+        Web3.to_checksum_address(exchange_address), cap_micro
+    ).build_transaction(
         {
             "from": Web3.to_checksum_address(wallet_address),
             "nonce": nonce,
