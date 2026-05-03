@@ -10,6 +10,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from polycopy.domain.models import Trade
+from polycopy.domain.value_objects import Money
 
 
 class WalletTradeDetected(BaseModel):
@@ -113,6 +114,77 @@ class TradeRejected(BaseModel):
     @field_validator("decided_at", mode="after")
     @classmethod
     def _require_tzaware_decided_at(cls, v: datetime) -> datetime:
+        if v.tzinfo is None:
+            raise ValueError("decided_at must be timezone-aware")
+        return v
+
+
+class SkipReason(StrEnum):
+    """Razões pelas quais Sizing pula um trade aprovado."""
+
+    BELOW_MIN_SIZE = "below_min_size"
+
+
+class OrderSized(BaseModel):
+    """Evento publicado quando Sizing escala um trade aprovado.
+
+    NATS subject: `order.sized`. `event_id` é o mesmo do `WalletTradeDetected`
+    original. `occurred_at` preserva o timestamp do trade (pra Sizing/Risk
+    medir lag); `decided_at` marca quando Sizing efetivamente decidiu.
+    """
+
+    SUBJECT: ClassVar[str] = "order.sized"
+
+    model_config = ConfigDict(frozen=True, strict=True)
+
+    event_id: UUID
+    occurred_at: datetime
+    decided_at: datetime
+    trade: Trade
+    final_size_usdc: Money
+    original_size_usdc: Money
+
+    @field_validator("occurred_at", mode="after")
+    @classmethod
+    def _require_tzaware_occurred(cls, v: datetime) -> datetime:
+        if v.tzinfo is None:
+            raise ValueError("occurred_at must be timezone-aware")
+        return v
+
+    @field_validator("decided_at", mode="after")
+    @classmethod
+    def _require_tzaware_decided(cls, v: datetime) -> datetime:
+        if v.tzinfo is None:
+            raise ValueError("decided_at must be timezone-aware")
+        return v
+
+
+class OrderSkipped(BaseModel):
+    """Evento publicado quando Sizing pula um trade aprovado (final_size < min).
+
+    NATS subject: `order.skipped`. Inclui `reason` pra audit.
+    """
+
+    SUBJECT: ClassVar[str] = "order.skipped"
+
+    model_config = ConfigDict(frozen=True, strict=True)
+
+    event_id: UUID
+    occurred_at: datetime
+    decided_at: datetime
+    trade: Trade
+    reason: SkipReason
+
+    @field_validator("occurred_at", mode="after")
+    @classmethod
+    def _require_tzaware_occurred(cls, v: datetime) -> datetime:
+        if v.tzinfo is None:
+            raise ValueError("occurred_at must be timezone-aware")
+        return v
+
+    @field_validator("decided_at", mode="after")
+    @classmethod
+    def _require_tzaware_decided(cls, v: datetime) -> datetime:
         if v.tzinfo is None:
             raise ValueError("decided_at must be timezone-aware")
         return v
