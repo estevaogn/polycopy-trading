@@ -234,6 +234,47 @@ services:
       retries: 3
       start_period: 15s
 
+  sizing:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+      args:
+        AGENT_MODULE: sizing
+    image: polycopy/sizing:dev
+    container_name: polycopy-sizing
+    restart: unless-stopped
+    labels:
+      com.polycopy.role: agent
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    environment:
+      ENV: ${ENV}
+      LOG_LEVEL: ${LOG_LEVEL}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_PORT: 5432
+      POSTGRES_HOST: polycopy-postgres
+      NATS_URL: nats://polycopy-nats:4222
+      REDIS_URL: redis://polycopy-redis:6379/0
+      SIZING_METRICS_PORT: "9105"
+      SIZING_MAX_DELIVER: "5"
+      SIZING_DURABLE_NAME: "sizing-1"
+      SIZING_PROPORTION_RATIO: "0.1"
+      SIZING_MAX_SIZE_USDC: "50"
+      SIZING_MIN_SIZE_USDC: "1"
+    ports:
+      - "127.0.0.1:9105:9105"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:9105/metrics\", timeout=2).read()' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
 volumes:
   polycopy_postgres_data:
   polycopy_nats_data:

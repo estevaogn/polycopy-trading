@@ -27,6 +27,7 @@ flowchart LR
             N[polycopy-notifier]
             M[polycopy-marketdata]
             R[polycopy-risk]
+            S[polycopy-sizing]
         end
     end
 
@@ -42,10 +43,14 @@ flowchart LR
     GAMMA -.->|lazy fallback httpx + tenacity| R
     R -->|insert risk_decisions\nPK trade_event_id| PG
     R -->|publish order.approved\nor trade.rejected| NATS
+    NATS -->|durable consumer sizing-1\norder.approved| S
+    S -->|insert order_sizings\nPK trade_event_id| PG
+    S -->|publish order.sized\nor order.skipped| NATS
     PROM -.->|scrape /metrics:9101| W
     PROM -.->|scrape /metrics:9102| N
     PROM -.->|scrape /metrics:9103| M
     PROM -.->|scrape /metrics:9104| R
+    PROM -.->|scrape /metrics:9105| S
 ```
 
 ## Componentes
@@ -95,6 +100,18 @@ Métricas: `polycopy_risk_decisions_total{result, reason}`, `polycopy_risk_decis
 
 Container: `polycopy-risk`. Endpoint `/metrics`: porta 9104.
 
+### SizingAgent (Plano 2C)
+
+Aplica proporcionalidade hardcoded em trades aprovados pelo Risk. Consome `order.approved`,
+calcula `final_size = min(MAX, original * RATIO)`, se `final_size < MIN` publica `order.skipped`,
+senão publica `order.sized`. Persiste decisão em `order_sizings` (idempotente via PK
+`trade_event_id`). Última peça da Fase 2 — Sizing entrega o que iria pro broker em Fase 3.
+
+Métricas: `polycopy_sizing_decisions_total{result, reason}`, `polycopy_sizing_decision_duration_seconds`,
+`polycopy_sizing_size_ratio_observed`.
+
+Container: `polycopy-sizing`. Endpoint `/metrics`: porta 9105.
+
 ### Bus de eventos
 
 `NatsMessagingBus` (`src/polycopy/infrastructure/messaging/nats_bus.py`) cria stream `WALLET_TRADES` (subject filter `wallet.trade.>`, max_age 7d, file storage, replicas 1) idempotentemente em `connect()`. Suporta:
@@ -126,6 +143,7 @@ docker compose logs -f watcher notifier
 - notifier: `http://127.0.0.1:9102/metrics`
 - marketdata: `http://127.0.0.1:9103/metrics`
 - risk: `http://127.0.0.1:9104/metrics`
+- sizing: `http://127.0.0.1:9105/metrics`
 - prometheus UI: `http://127.0.0.1:9090/`
 
 ### Local sem Docker (dev)
@@ -160,6 +178,9 @@ uv run python -m polycopy.agents.notifier
 | `polycopy_risk_decision_duration_seconds` | Histogram | — | risk |
 | `polycopy_market_cache_hits_total` | Counter | `result` (`hit\|miss\|stale`) | risk |
 | `polycopy_risk_lazy_fetch_total` | Counter | `result` (`ok\|fail`) | risk |
+| `polycopy_sizing_decisions_total` | Counter | `result` (`sized\|skipped`), `reason` | sizing |
+| `polycopy_sizing_decision_duration_seconds` | Histogram | — | sizing |
+| `polycopy_sizing_size_ratio_observed` | Histogram | — | sizing |
 
 Logs estruturados via `structlog` (JSON em prod, console colorido em dev).
 
