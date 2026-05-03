@@ -142,3 +142,48 @@ class RiskDecisionRow(Base):
             postgresql_using="btree",
         ),
     )
+
+
+class OrderSizingRow(Base):
+    __tablename__ = "order_sizings"
+
+    trade_event_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    wallet: Mapped[str] = mapped_column(String, nullable=False)
+    condition_id: Mapped[str] = mapped_column(String, nullable=False)
+    token_id: Mapped[str] = mapped_column(String, nullable=False)
+    original_size_usdc: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
+    final_size_usdc: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    decision: Mapped[str] = mapped_column(String, nullable=False)
+    reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "decision IN ('sized', 'skipped')",
+            name="order_sizings_decision_enum",
+        ),
+        CheckConstraint(
+            "(decision = 'sized' AND final_size_usdc IS NOT NULL AND reason IS NULL) "
+            "OR (decision = 'skipped' AND final_size_usdc IS NULL AND reason IS NOT NULL)",
+            name="order_sizings_consistency",
+        ),
+        CheckConstraint(
+            "original_size_usdc > 0 AND (final_size_usdc IS NULL OR final_size_usdc > 0)",
+            name="order_sizings_size_positive",
+        ),
+        Index(
+            "idx_order_sizings_wallet_decided_at",
+            "wallet",
+            "decided_at",
+            postgresql_using="btree",
+        ),
+        Index(
+            "idx_order_sizings_skipped_decided_at",
+            "decided_at",
+            postgresql_where="decision = 'skipped'",
+            postgresql_using="btree",
+        ),
+    )
