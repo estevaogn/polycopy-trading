@@ -35,6 +35,9 @@ from nats.js.errors import BadRequestError
 
 from polycopy.domain.events import (
     OrderApproved,
+    OrderDryRun,
+    OrderExecuted,
+    OrderFailed,
     OrderSized,
     OrderSkipped,
     TradeRejected,
@@ -149,6 +152,33 @@ class NatsMessagingBus:
         payload = event.model_dump_json().encode("utf-8")
         await js.publish(
             OrderSkipped.SUBJECT,
+            payload,
+            headers={"Nats-Msg-Id": str(event.event_id)},
+        )
+
+    async def publish_order_executed(self, event: OrderExecuted) -> None:
+        _, js = self._require_connected()
+        payload = event.model_dump_json().encode("utf-8")
+        await js.publish(
+            OrderExecuted.SUBJECT,
+            payload,
+            headers={"Nats-Msg-Id": str(event.event_id)},
+        )
+
+    async def publish_order_failed(self, event: OrderFailed) -> None:
+        _, js = self._require_connected()
+        payload = event.model_dump_json().encode("utf-8")
+        await js.publish(
+            OrderFailed.SUBJECT,
+            payload,
+            headers={"Nats-Msg-Id": str(event.event_id)},
+        )
+
+    async def publish_order_dry_run(self, event: OrderDryRun) -> None:
+        _, js = self._require_connected()
+        payload = event.model_dump_json().encode("utf-8")
+        await js.publish(
+            OrderDryRun.SUBJECT,
             payload,
             headers={"Nats-Msg-Id": str(event.event_id)},
         )

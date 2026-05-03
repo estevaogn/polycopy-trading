@@ -7,6 +7,9 @@ from typing import Protocol
 
 from polycopy.domain.events import (
     OrderApproved,
+    OrderDryRun,
+    OrderExecuted,
+    OrderFailed,
     OrderSized,
     OrderSkipped,
     TradeRejected,
@@ -46,6 +49,18 @@ class MessagingPort(Protocol):
 
     async def publish_order_skipped(self, event: OrderSkipped) -> None:
         """Publica evento no subject `order.skipped`."""
+        ...
+
+    async def publish_order_executed(self, event: OrderExecuted) -> None:
+        """Publica evento no subject `order.executed`."""
+        ...
+
+    async def publish_order_failed(self, event: OrderFailed) -> None:
+        """Publica evento no subject `order.failed`."""
+        ...
+
+    async def publish_order_dry_run(self, event: OrderDryRun) -> None:
+        """Publica evento no subject `order.dry_run`."""
         ...
 
     async def subscribe(

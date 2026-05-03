@@ -11,7 +11,11 @@ from decimal import Decimal
 from uuid import uuid4
 
 from polycopy.domain.events import (
+    ExecutionMode,
     OrderApproved,
+    OrderDryRun,
+    OrderExecuted,
+    OrderFailed,
     OrderSized,
     OrderSkipped,
     RejectionReason,
@@ -19,6 +23,7 @@ from polycopy.domain.events import (
     TradeRejected,
     WalletTradeDetected,
 )
+from polycopy.domain.execution import ExecutionResult, OrderExecution
 from polycopy.domain.market import Market, OrderBook
 from polycopy.domain.models import Side, Trade
 from polycopy.domain.risk import RiskDecision
@@ -34,6 +39,8 @@ from polycopy.ports import (
     CachedMarket,
     MarketRepository,
     MessagingPort,
+    OrderExecutionRepository,
+    OrderExecutor,
     OrderSizingRepository,
     PolymarketClobPort,
     PolymarketDataPort,
@@ -63,6 +70,15 @@ class _FakeMessaging:
         return None
 
     async def publish_order_skipped(self, event: OrderSkipped) -> None:
+        return None
+
+    async def publish_order_executed(self, event: OrderExecuted) -> None:
+        return None
+
+    async def publish_order_failed(self, event: OrderFailed) -> None:
+        return None
+
+    async def publish_order_dry_run(self, event: OrderDryRun) -> None:
         return None
 
     async def subscribe(self, subject: str, handler: EventHandler) -> None:
@@ -235,3 +251,54 @@ def test_sizing_ports_importable() -> None:
     assert OrderSized is not None
     assert OrderSkipped is not None
     assert SkipReason is not None
+
+
+class _FakeOrderExecutionRepo:
+    """Stub que implementa OrderExecutionRepository."""
+
+    def __init__(self) -> None:
+        self.inserted: list[OrderExecution] = []
+
+    async def insert(self, execution: OrderExecution) -> bool:
+        self.inserted.append(execution)
+        return True
+
+
+class _FakeOrderExecutor:
+    """Stub que implementa OrderExecutor."""
+
+    async def execute(self, trade: Trade, final_size_usdc: Decimal) -> ExecutionResult:
+        return ExecutionResult(
+            mode=ExecutionMode.DRY_RUN,
+            success=True,
+            tx_hash=None,
+            gas_wei=None,
+            failure_reason=None,
+            error_message=None,
+        )
+
+
+def _accepts_order_execution_repo(_: OrderExecutionRepository) -> None:
+    """Helper: mypy falha aqui se o argumento não satisfizer OrderExecutionRepository."""
+
+
+def _accepts_order_executor(_: OrderExecutor) -> None:
+    """Helper: mypy falha aqui se o argumento não satisfizer OrderExecutor."""
+
+
+def test_fake_order_execution_repo_satisfies_port() -> None:
+    fake = _FakeOrderExecutionRepo()
+    _accepts_order_execution_repo(fake)
+
+
+def test_fake_order_executor_satisfies_port() -> None:
+    fake = _FakeOrderExecutor()
+    _accepts_order_executor(fake)
+
+
+def test_execution_ports_importable() -> None:
+    assert OrderExecutionRepository is not None
+    assert OrderExecutor is not None
+    assert OrderExecuted is not None
+    assert OrderFailed is not None
+    assert OrderDryRun is not None
