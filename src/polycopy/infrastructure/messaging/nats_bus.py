@@ -60,6 +60,10 @@ _SIZING_STREAM_NAME = "SIZING_DECISIONS"
 # do stream RISK_DECISIONS — decisão fixada em 2B-T5 fix I1.
 _SIZING_STREAM_SUBJECTS = ["order.sized", "order.skipped"]
 
+_EXECUTION_STREAM_NAME = "EXECUTION_RESULTS"
+# Subjects literais (não wildcard `order.*`) pra evitar colisão com outros streams.
+_EXECUTION_STREAM_SUBJECTS = ["order.executed", "order.failed", "order.dry_run"]
+
 
 class NatsMessagingBus:
     """Adapter JetStream de `MessagingPort`."""
@@ -104,6 +108,7 @@ class NatsMessagingBus:
             self._make_stream_config(_STREAM_NAME, _STREAM_SUBJECTS),
             self._make_stream_config(_RISK_STREAM_NAME, _RISK_STREAM_SUBJECTS),
             self._make_stream_config(_SIZING_STREAM_NAME, _SIZING_STREAM_SUBJECTS),
+            self._make_stream_config(_EXECUTION_STREAM_NAME, _EXECUTION_STREAM_SUBJECTS),
         ]
         # Streams podem já existir com config compatível — BadRequestError é benigno.
         for config in configs:

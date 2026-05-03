@@ -11,7 +11,11 @@ import pytest
 
 from polycopy.config import Settings
 from polycopy.domain.events import (
+    FailureReason,
     OrderApproved,
+    OrderDryRun,
+    OrderExecuted,
+    OrderFailed,
     OrderSized,
     OrderSkipped,
     RejectionReason,
@@ -95,6 +99,40 @@ def _order_skipped_event() -> OrderSkipped:
         decided_at=datetime.now(tz=UTC),
         trade=_trade(),
         reason=SkipReason.BELOW_MIN_SIZE,
+    )
+
+
+def _order_executed_event() -> OrderExecuted:
+    return OrderExecuted(
+        event_id=uuid4(),
+        occurred_at=datetime.now(tz=UTC),
+        decided_at=datetime.now(tz=UTC),
+        trade=_trade(),
+        final_size_usdc=Money.from_usdc("10"),
+        tx_hash="0x" + "ab" * 32,
+        gas_wei=21000,
+    )
+
+
+def _order_failed_event() -> OrderFailed:
+    return OrderFailed(
+        event_id=uuid4(),
+        occurred_at=datetime.now(tz=UTC),
+        decided_at=datetime.now(tz=UTC),
+        trade=_trade(),
+        final_size_usdc=Money.from_usdc("10"),
+        reason=FailureReason.EXECUTOR_DISABLED,
+        error_message="test failure",
+    )
+
+
+def _order_dry_run_event() -> OrderDryRun:
+    return OrderDryRun(
+        event_id=uuid4(),
+        occurred_at=datetime.now(tz=UTC),
+        decided_at=datetime.now(tz=UTC),
+        trade=_trade(),
+        final_size_usdc=Money.from_usdc("10"),
     )
 
 
@@ -331,6 +369,105 @@ async def test_publish_order_skipped_dedup_by_event_id(bus: NatsMessagingBus) ->
     event = _order_skipped_event()
     await bus.publish_order_skipped(event)
     await bus.publish_order_skipped(event)
+    await asyncio.sleep(0.5)
+    assert len(received) == 1
+    await bus.close()
+
+
+async def test_publish_order_executed_received_by_subscriber(bus: NatsMessagingBus) -> None:
+    received: list[bytes] = []
+
+    async def handler(payload: bytes) -> None:
+        received.append(payload)
+
+    await bus.subscribe(OrderExecuted.SUBJECT, handler)
+    await bus.publish_order_executed(_order_executed_event())
+    await asyncio.sleep(0.5)
+    assert len(received) == 1
+    await bus.close()
+
+
+async def test_publish_order_executed_dedup_by_event_id(bus: NatsMessagingBus) -> None:
+    """Mesmo event_id -> mesmo Nats-Msg-Id -> JetStream dedupa server-side.
+
+    Validado via durable subscriber (ephemeral não vê dedup — ver T5/2B).
+    """
+    received: list[bytes] = []
+
+    async def handler(payload: bytes, num_delivered: int) -> None:
+        received.append(payload)
+
+    durable = f"executor-exec-dedup-{uuid4().hex[:8]}"
+    await bus.subscribe(OrderExecuted.SUBJECT, handler, durable=durable)
+    await asyncio.sleep(0.05)
+
+    event = _order_executed_event()
+    await bus.publish_order_executed(event)
+    await bus.publish_order_executed(event)
+    await asyncio.sleep(0.5)
+    assert len(received) == 1
+    await bus.close()
+
+
+async def test_publish_order_failed_received_by_subscriber(bus: NatsMessagingBus) -> None:
+    received: list[bytes] = []
+
+    async def handler(payload: bytes) -> None:
+        received.append(payload)
+
+    await bus.subscribe(OrderFailed.SUBJECT, handler)
+    await bus.publish_order_failed(_order_failed_event())
+    await asyncio.sleep(0.5)
+    assert len(received) == 1
+    await bus.close()
+
+
+async def test_publish_order_failed_dedup_by_event_id(bus: NatsMessagingBus) -> None:
+    """Mesmo event_id -> mesmo Nats-Msg-Id -> JetStream dedupa server-side."""
+    received: list[bytes] = []
+
+    async def handler(payload: bytes, num_delivered: int) -> None:
+        received.append(payload)
+
+    durable = f"executor-fail-dedup-{uuid4().hex[:8]}"
+    await bus.subscribe(OrderFailed.SUBJECT, handler, durable=durable)
+    await asyncio.sleep(0.05)
+
+    event = _order_failed_event()
+    await bus.publish_order_failed(event)
+    await bus.publish_order_failed(event)
+    await asyncio.sleep(0.5)
+    assert len(received) == 1
+    await bus.close()
+
+
+async def test_publish_order_dry_run_received_by_subscriber(bus: NatsMessagingBus) -> None:
+    received: list[bytes] = []
+
+    async def handler(payload: bytes) -> None:
+        received.append(payload)
+
+    await bus.subscribe(OrderDryRun.SUBJECT, handler)
+    await bus.publish_order_dry_run(_order_dry_run_event())
+    await asyncio.sleep(0.5)
+    assert len(received) == 1
+    await bus.close()
+
+
+async def test_publish_order_dry_run_dedup_by_event_id(bus: NatsMessagingBus) -> None:
+    """Mesmo event_id -> mesmo Nats-Msg-Id -> JetStream dedupa server-side."""
+    received: list[bytes] = []
+
+    async def handler(payload: bytes, num_delivered: int) -> None:
+        received.append(payload)
+
+    durable = f"executor-dry-dedup-{uuid4().hex[:8]}"
+    await bus.subscribe(OrderDryRun.SUBJECT, handler, durable=durable)
+    await asyncio.sleep(0.05)
+
+    event = _order_dry_run_event()
+    await bus.publish_order_dry_run(event)
+    await bus.publish_order_dry_run(event)
     await asyncio.sleep(0.5)
     assert len(received) == 1
     await bus.close()
