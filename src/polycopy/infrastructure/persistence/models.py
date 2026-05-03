@@ -187,3 +187,76 @@ class OrderSizingRow(Base):
             postgresql_using="btree",
         ),
     )
+
+
+class OrderExecutionRow(Base):
+    __tablename__ = "order_executions"
+
+    trade_event_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    wallet: Mapped[str] = mapped_column(String, nullable=False)
+    condition_id: Mapped[str] = mapped_column(String, nullable=False)
+    token_id: Mapped[str] = mapped_column(String, nullable=False)
+    final_size_usdc: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
+    mode: Mapped[str] = mapped_column(String, nullable=False)
+    result: Mapped[str] = mapped_column(String, nullable=False)
+    tx_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    gas_wei: Mapped[Decimal | None] = mapped_column(Numeric(40, 0), nullable=True)
+    failure_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(String, nullable=True)
+    decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "mode IN ('real', 'dry_run')",
+            name="order_executions_mode_enum",
+        ),
+        CheckConstraint(
+            "result IN ('executed', 'failed', 'dry_run')",
+            name="order_executions_result_enum",
+        ),
+        CheckConstraint(
+            "(mode = 'real' AND result IN ('executed', 'failed')) "
+            "OR (mode = 'dry_run' AND result = 'dry_run')",
+            name="order_executions_mode_result_consistency",
+        ),
+        CheckConstraint(
+            "(result = 'executed' AND tx_hash IS NOT NULL) OR result IN ('failed', 'dry_run')",
+            name="order_executions_executed_has_tx",
+        ),
+        CheckConstraint(
+            "(result = 'failed' AND failure_reason IS NOT NULL AND error_message IS NOT NULL) "
+            "OR result IN ('executed', 'dry_run')",
+            name="order_executions_failed_has_reason",
+        ),
+        CheckConstraint(
+            "(result = 'dry_run' AND tx_hash IS NULL AND gas_wei IS NULL "
+            "AND failure_reason IS NULL) "
+            "OR result IN ('executed', 'failed')",
+            name="order_executions_dry_run_no_tx",
+        ),
+        CheckConstraint(
+            "final_size_usdc > 0",
+            name="order_executions_size_positive",
+        ),
+        Index(
+            "idx_order_executions_wallet_decided_at",
+            "wallet",
+            "decided_at",
+            postgresql_using="btree",
+        ),
+        Index(
+            "idx_order_executions_failed_decided_at",
+            "decided_at",
+            postgresql_where="result = 'failed'",
+            postgresql_using="btree",
+        ),
+        Index(
+            "idx_order_executions_real_executed",
+            "decided_at",
+            postgresql_where="mode = 'real' AND result = 'executed'",
+            postgresql_using="btree",
+        ),
+    )
