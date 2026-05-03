@@ -52,8 +52,21 @@ def test_execution_mode_values() -> None:
 
 
 def test_failure_reason_values() -> None:
+    # Fase 3
     assert FailureReason.INVALID_TRADE_PARAMS.value == "invalid_trade_params"
     assert FailureReason.EXECUTOR_DISABLED.value == "executor_disabled"
+    # Fase 4 — kill-switches
+    assert FailureReason.MANUALLY_PAUSED.value == "manually_paused"
+    assert FailureReason.DAILY_TRADES_EXCEEDED.value == "daily_trades_exceeded"
+    assert FailureReason.DAILY_USDC_EXCEEDED.value == "daily_usdc_exceeded"
+    assert FailureReason.CIRCUIT_BREAKER.value == "circuit_breaker"
+    assert FailureReason.SIZE_EXCEEDS_EXECUTOR_CAP.value == "size_exceeds_executor_cap"
+    # Fase 4 — on-chain
+    assert FailureReason.INSUFFICIENT_USDC_BALANCE.value == "insufficient_usdc_balance"
+    assert FailureReason.INSUFFICIENT_USDC_ALLOWANCE.value == "insufficient_usdc_allowance"
+    assert FailureReason.CLOB_REJECTED_ORDER.value == "clob_rejected_order"
+    assert FailureReason.RPC_ERROR.value == "rpc_error"
+    assert FailureReason.SIGNATURE_ERROR.value == "signature_error"
 
 
 # ---------------------------------------------------------------------------

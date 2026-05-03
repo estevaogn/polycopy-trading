@@ -200,8 +200,23 @@ class ExecutionMode(StrEnum):
 class FailureReason(StrEnum):
     """Razões pelas quais Executor falha. Aberto pra extensão (Fase 4)."""
 
+    # Fase 3 (existentes)
     INVALID_TRADE_PARAMS = "invalid_trade_params"
     EXECUTOR_DISABLED = "executor_disabled"
+
+    # Fase 4 — kill-switches (5)
+    MANUALLY_PAUSED = "manually_paused"
+    DAILY_TRADES_EXCEEDED = "daily_trades_exceeded"
+    DAILY_USDC_EXCEEDED = "daily_usdc_exceeded"
+    CIRCUIT_BREAKER = "circuit_breaker"
+    SIZE_EXCEEDS_EXECUTOR_CAP = "size_exceeds_executor_cap"
+
+    # Fase 4 — falhas on-chain via py-clob-client (5)
+    INSUFFICIENT_USDC_BALANCE = "insufficient_usdc_balance"
+    INSUFFICIENT_USDC_ALLOWANCE = "insufficient_usdc_allowance"
+    CLOB_REJECTED_ORDER = "clob_rejected_order"
+    RPC_ERROR = "rpc_error"
+    SIGNATURE_ERROR = "signature_error"
 
 
 class OrderExecuted(BaseModel):
