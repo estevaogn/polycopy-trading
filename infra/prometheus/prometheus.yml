@@ -14,3 +14,6 @@ scrape_configs:
   - job_name: polycopy-marketdata
     static_configs:
       - targets: ['polycopy-marketdata:9103']
+  - job_name: polycopy-risk
+    static_configs:
+      - targets: ['polycopy-risk:9104']

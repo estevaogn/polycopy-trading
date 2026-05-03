@@ -26,6 +26,7 @@ flowchart LR
             W[polycopy-watcher]
             N[polycopy-notifier]
             M[polycopy-marketdata]
+            R[polycopy-risk]
         end
     end
 
@@ -36,9 +37,15 @@ flowchart LR
     N -->|aiogram| TG
     GAMMA -->|httpx + tenacity| M
     M -->|upsert markets| PG
+    NATS -->|durable consumer risk-1\nwallet.trade.detected| R
+    PG -->|read markets| R
+    GAMMA -.->|lazy fallback httpx + tenacity| R
+    R -->|insert risk_decisions\nPK trade_event_id| PG
+    R -->|publish order.approved\nor trade.rejected| NATS
     PROM -.->|scrape /metrics:9101| W
     PROM -.->|scrape /metrics:9102| N
     PROM -.->|scrape /metrics:9103| M
+    PROM -.->|scrape /metrics:9104| R
 ```
 
 ## Componentes
@@ -75,6 +82,19 @@ Métricas: `polycopy_marketdata_sync_total{result}`, `polycopy_marketdata_sync_d
 
 Container: `polycopy-marketdata`. Endpoint `/metrics`: porta 9103.
 
+### RiskAgent (Plano 2B)
+
+Gate fail-safe entre detecção e sizing. Consome `wallet.trade.detected`, aplica 5
+regras hardcoded (size, market exists, market active, price range, liquidez), persiste
+decisão em `risk_decisions` (idempotente via PK `trade_event_id`), publica `order.approved`
+ou `trade.rejected`. Lazy fallback via Gamma quando MarketRepository miss/stale (aproveita
+desenho do 2A); fail-safe brando: aceita stale se Gamma também falhou.
+
+Métricas: `polycopy_risk_decisions_total{result, reason}`, `polycopy_risk_decision_duration_seconds`,
+`polycopy_market_cache_hits_total{result}`, `polycopy_risk_lazy_fetch_total{result}`.
+
+Container: `polycopy-risk`. Endpoint `/metrics`: porta 9104.
+
 ### Bus de eventos
 
 `NatsMessagingBus` (`src/polycopy/infrastructure/messaging/nats_bus.py`) cria stream `WALLET_TRADES` (subject filter `wallet.trade.>`, max_age 7d, file storage, replicas 1) idempotentemente em `connect()`. Suporta:
@@ -105,6 +125,7 @@ docker compose logs -f watcher notifier
 - watcher: `http://127.0.0.1:9101/metrics`
 - notifier: `http://127.0.0.1:9102/metrics`
 - marketdata: `http://127.0.0.1:9103/metrics`
+- risk: `http://127.0.0.1:9104/metrics`
 - prometheus UI: `http://127.0.0.1:9090/`
 
 ### Local sem Docker (dev)
@@ -135,6 +156,10 @@ uv run python -m polycopy.agents.notifier
 | `polycopy_marketdata_sync_total` | Counter | `result` (`ok\|fail`) | marketdata |
 | `polycopy_marketdata_sync_duration_seconds` | Histogram | — | marketdata |
 | `polycopy_marketdata_markets_tracked` | Gauge | — | marketdata |
+| `polycopy_risk_decisions_total` | Counter | `result` (`approved\|rejected`), `reason` | risk |
+| `polycopy_risk_decision_duration_seconds` | Histogram | — | risk |
+| `polycopy_market_cache_hits_total` | Counter | `result` (`hit\|miss\|stale`) | risk |
+| `polycopy_risk_lazy_fetch_total` | Counter | `result` (`ok\|fail`) | risk |
 
 Logs estruturados via `structlog` (JSON em prod, console colorido em dev).
 
