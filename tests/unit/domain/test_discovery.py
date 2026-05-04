@@ -11,6 +11,7 @@ from polycopy.domain.discovery import (
     LeaderboardEntry,
     OrderBy,
     TimePeriod,
+    derive_label,
 )
 from polycopy.domain.value_objects import WalletAddress
 
@@ -93,3 +94,50 @@ class TestCandidateWallet:
             verified_badge=True,
         )
         assert cand.label == "alice"
+
+
+class TestDeriveLabel:
+    def _entry(self, addr_hex: str = "a" * 40, user_name: str | None = None) -> LeaderboardEntry:
+        return LeaderboardEntry(
+            rank=1,
+            address=WalletAddress(value="0x" + addr_hex),
+            user_name=user_name,
+            volume_usdc=Decimal("0"),
+            pnl_usdc=Decimal("0"),
+            verified_badge=False,
+        )
+
+    def test_user_name_present(self) -> None:
+        assert derive_label(self._entry(user_name="alice")) == "alice"
+
+    def test_user_name_trimmed(self) -> None:
+        assert derive_label(self._entry(user_name="  bob  ")) == "bob"
+
+    def test_user_name_whitespace_replaced_with_underscore(self) -> None:
+        assert derive_label(self._entry(user_name="alice smith")) == "alice_smith"
+
+    def test_user_name_internal_multiple_whitespace_collapsed(self) -> None:
+        assert derive_label(self._entry(user_name="a   b\tc")) == "a_b_c"
+
+    def test_user_name_non_printable_dropped(self) -> None:
+        assert derive_label(self._entry(user_name="al\x00ice")) == "alice"
+
+    def test_user_name_max_32_chars(self) -> None:
+        long_name = "x" * 100
+        assert len(derive_label(self._entry(user_name=long_name))) == 32
+
+    def test_user_name_none_falls_back_to_address_prefix(self) -> None:
+        result = derive_label(self._entry(addr_hex="cafef00d" + "0" * 32, user_name=None))
+        assert result == "0xcafef00d…"
+
+    def test_user_name_empty_string_falls_back(self) -> None:
+        result = derive_label(self._entry(addr_hex="cafef00d" + "0" * 32, user_name=""))
+        assert result == "0xcafef00d…"
+
+    def test_user_name_only_whitespace_falls_back(self) -> None:
+        result = derive_label(self._entry(addr_hex="cafef00d" + "0" * 32, user_name="   "))
+        assert result == "0xcafef00d…"
+
+    def test_user_name_only_non_printable_falls_back(self) -> None:
+        result = derive_label(self._entry(addr_hex="cafef00d" + "0" * 32, user_name="\x00\x01"))
+        assert result == "0xcafef00d…"

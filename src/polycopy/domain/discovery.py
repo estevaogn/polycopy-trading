@@ -6,6 +6,7 @@ https://data-api.polymarket.com/v1/leaderboard
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
@@ -56,3 +57,25 @@ class CandidateWallet:
     volume_usdc: Decimal
     pnl_usdc: Decimal
     verified_badge: bool
+
+
+_LABEL_MAX_LEN = 32
+_FALLBACK_ADDR_PREFIX_CHARS = 10
+
+
+def derive_label(entry: LeaderboardEntry) -> str:
+    """Return a sanitized label for a leaderboard entry.
+
+    Sanitization rules:
+    - trim leading/trailing whitespace
+    - replace runs of whitespace with single '_'
+    - drop non-printable characters
+    - cap at 32 chars
+    - fall back to '0x<8-hex>…' when user_name is empty after sanitization
+    """
+    raw = (entry.user_name or "").strip()
+    collapsed = re.sub(r"\s+", "_", raw)
+    printable = "".join(ch for ch in collapsed if ch.isprintable())
+    if not printable:
+        return f"{entry.address.value[:_FALLBACK_ADDR_PREFIX_CHARS]}…"
+    return printable[:_LABEL_MAX_LEN]
