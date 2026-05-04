@@ -23,6 +23,7 @@ class ExecutionResult:
     gas_wei: int | None = None
     failure_reason: FailureReason | None = None
     error_message: str | None = None
+    expected_avg_price: Decimal | None = None  # NOVO — Plano 5B
 
 
 @dataclass(frozen=True)
@@ -52,6 +53,7 @@ class OrderExecution:
     failure_reason: FailureReason | None
     error_message: str | None
     decided_at: datetime
+    expected_avg_price: Decimal | None = None  # NOVO — Plano 5B
 
     def __post_init__(self) -> None:
         if self.mode == ExecutionMode.REAL:
