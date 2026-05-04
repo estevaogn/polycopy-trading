@@ -12,6 +12,7 @@ import time
 from decimal import Decimal
 from typing import Any
 
+import structlog
 from eth_account import Account
 from py_clob_client.client import ClobClient
 from py_clob_client.clob_types import OrderType
@@ -21,9 +22,11 @@ from polycopy.config import Settings
 from polycopy.domain.events import ExecutionMode, FailureReason
 from polycopy.domain.execution import ExecutionResult
 from polycopy.domain.models import Trade
+from polycopy.domain.slippage import calculate_expected_avg_price
 from polycopy.infrastructure.execution.kill_switch import KillSwitch
 from polycopy.infrastructure.execution.order_mapper import to_order_args
 from polycopy.infrastructure.observability.metrics import Metrics
+from polycopy.ports import PolymarketClobPort
 
 
 class Web3CLOBExecutor:
@@ -37,16 +40,54 @@ class Web3CLOBExecutor:
         self,
         *,
         clob_client: ClobClient,
+        clob: PolymarketClobPort,
         kill_switch: KillSwitch,
         max_size_usdc: Decimal,
         metrics: Metrics,
     ) -> None:
-        self._clob = clob_client
+        self._clob_client = clob_client
+        self._clob = clob
         self._kill_switch = kill_switch
         self._max_size_usdc = max_size_usdc
         self._metrics = metrics
+        self._log = structlog.get_logger("web3_clob_executor")
+
+    async def _compute_expected_price(
+        self, trade: Trade, final_size_usdc: Decimal
+    ) -> Decimal | None:
+        try:
+            book = await self._clob.get_book(trade.token_id)
+        except Exception as exc:  # noqa: BLE001
+            self._metrics.executor_expected_price_unavailable_total.labels(
+                reason="fetch_failed"
+            ).inc()
+            self._log.warning(
+                "expected_price_fetch_failed",
+                error=str(exc),
+                error_type=type(exc).__name__,
+                token_id=trade.token_id.value,
+            )
+            return None
+
+        if not book.asks and not book.bids:
+            self._metrics.executor_expected_price_unavailable_total.labels(
+                reason="empty_book"
+            ).inc()
+            return None
+
+        result = calculate_expected_avg_price(
+            book=book, side=trade.side, target_usdc=final_size_usdc
+        )
+        if result is None:
+            self._metrics.executor_expected_price_unavailable_total.labels(
+                reason="insufficient_volume"
+            ).inc()
+        return result
 
     async def execute(self, trade: Trade, final_size_usdc: Decimal) -> ExecutionResult:
+        # 0. Computar expected_avg_price antes de submeter (parity com DryRunExecutor)
+        expected = await self._compute_expected_price(trade, final_size_usdc)
+
         # 1. Kill-switch (5 camadas, fail-fast)
         block_reason = self._kill_switch.check(final_size_usdc)
         if block_reason is not None:
@@ -56,6 +97,7 @@ class Web3CLOBExecutor:
                 success=False,
                 failure_reason=block_reason,
                 error_message=f"kill_switch blocked: {block_reason.value}",
+                expected_avg_price=expected,
             )
 
         # 2. Mapear Trade -> OrderArgs
@@ -64,11 +106,11 @@ class Web3CLOBExecutor:
         # 3. Submeter via py-clob-client (sync API -> asyncio.to_thread)
         clob_start = time.perf_counter()
         try:
-            signed = await asyncio.to_thread(self._clob.create_order, args)
+            signed = await asyncio.to_thread(self._clob_client.create_order, args)
             # py-clob-client retorna dict serializável da response JSON do CLOB API;
             # verificar empiricamente em T8 (smoke test) se o shape bate.
             response: dict[str, Any] = await asyncio.to_thread(
-                self._clob.post_order, signed, OrderType.GTC
+                self._clob_client.post_order, signed, OrderType.GTC
             )
         except Exception as exc:  # noqa: BLE001 — vira OrderFailed
             self._metrics.executor_clob_request_duration_seconds.labels(result="error").observe(
@@ -82,6 +124,7 @@ class Web3CLOBExecutor:
                 success=False,
                 failure_reason=reason,
                 error_message=str(exc),
+                expected_avg_price=expected,
             )
 
         self._metrics.executor_clob_request_duration_seconds.labels(result="success").observe(
@@ -97,6 +140,7 @@ class Web3CLOBExecutor:
                 success=False,
                 failure_reason=FailureReason.CLOB_REJECTED_ORDER,
                 error_message=str(response.get("errorMsg", "unknown")),
+                expected_avg_price=expected,
             )
 
         # 5. Sucesso
@@ -111,6 +155,7 @@ class Web3CLOBExecutor:
             # response["gasUsed"] reflete gas real ou se chega 0/ausente. Métrica pode
             # precisar leitura on-chain pós-tx_hash em hardening.
             gas_wei=int(response.get("gasUsed", 0)),
+            expected_avg_price=expected,
         )
 
 

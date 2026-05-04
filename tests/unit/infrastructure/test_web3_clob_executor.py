@@ -13,6 +13,7 @@ from prometheus_client import CollectorRegistry
 
 from polycopy.config import Settings
 from polycopy.domain.events import ExecutionMode, FailureReason
+from polycopy.domain.market import OrderBook, OrderBookLevel
 from polycopy.domain.models import Side, Trade
 from polycopy.domain.value_objects import (
     ConditionId,
@@ -29,6 +30,50 @@ from polycopy.infrastructure.execution.web3_clob_executor import (
     verify_allowance,
 )
 from polycopy.infrastructure.observability.metrics import Metrics, make_metrics
+
+
+class _StubCLOB:
+    """Stub que satisfaz PolymarketClobPort para testes do Web3CLOBExecutor."""
+
+    def __init__(
+        self,
+        book: OrderBook | None = None,
+        raise_exc: Exception | None = None,
+    ) -> None:
+        self._book = book
+        self._raise = raise_exc
+
+    async def get_book(self, token_id: TokenId) -> OrderBook:
+        if self._raise is not None:
+            raise self._raise
+        if self._book is None:
+            raise RuntimeError("book not configured")
+        return self._book
+
+
+def _level(price: str, size: str) -> OrderBookLevel:
+    return OrderBookLevel(
+        price=Price(value=Decimal(price)),
+        size=Money(amount=Decimal(size)),
+    )
+
+
+def _book(
+    *,
+    asks: list[OrderBookLevel] | None = None,
+    bids: list[OrderBookLevel] | None = None,
+) -> OrderBook:
+    return OrderBook(
+        token_id=TokenId(value="42"),
+        asks=asks or [],
+        bids=bids or [],
+        captured_at=datetime.now(tz=UTC),
+    )
+
+
+def _trivial_book() -> OrderBook:
+    """Book trivial com liquidez suficiente para qualquer trade de teste."""
+    return _book(asks=[_level("0.5", "1000")], bids=[_level("0.5", "1000")])
 
 
 def _trade() -> Trade:
@@ -66,10 +111,12 @@ def _make_executor(
     metrics: Metrics,
     kill_switch: KillSwitch,
     clob_client: Any,
+    clob: _StubCLOB | None = None,
     max_size_usdc: Decimal = Decimal("100"),
 ) -> Web3CLOBExecutor:
     return Web3CLOBExecutor(
         clob_client=clob_client,
+        clob=clob if clob is not None else _StubCLOB(book=_trivial_book()),
         kill_switch=kill_switch,
         max_size_usdc=max_size_usdc,
         metrics=metrics,
@@ -131,7 +178,11 @@ async def test_execute_size_exceeds_executor_cap_blocked(metrics: Metrics, tmp_p
     )
     clob = MagicMock()
     executor = Web3CLOBExecutor(
-        clob_client=clob, kill_switch=ks, max_size_usdc=Decimal("2"), metrics=metrics
+        clob_client=clob,
+        clob=_StubCLOB(book=_trivial_book()),
+        kill_switch=ks,
+        max_size_usdc=Decimal("2"),
+        metrics=metrics,
     )
 
     result = await executor.execute(_trade(), Decimal("3"))
@@ -258,7 +309,11 @@ async def test_metric_kill_switch_blocks_incremented(metrics: Metrics, tmp_path:
     )
     clob = MagicMock()
     executor = Web3CLOBExecutor(
-        clob_client=clob, kill_switch=ks, max_size_usdc=Decimal("100"), metrics=metrics
+        clob_client=clob,
+        clob=_StubCLOB(book=_trivial_book()),
+        kill_switch=ks,
+        max_size_usdc=Decimal("100"),
+        metrics=metrics,
     )
 
     await executor.execute(_trade(), Decimal("1"))
@@ -487,3 +542,82 @@ async def test_verify_allowance_raises_when_insufficient(
 
         with pytest.raises(RuntimeError, match="allowance insufficient"):
             await verify_allowance(settings, Decimal("10"))
+
+
+# ----- expected_avg_price parity -----
+
+
+async def test_web3_clob_executor_populates_expected_avg_price_on_success(
+    metrics: Metrics, kill_switch: KillSwitch
+) -> None:
+    """Happy path: expected_avg_price calculado e propagado no ExecutionResult."""
+    # Book com ask único a 0.5, size 1000 USDC — suficiente para target de 1 USDC
+    book = _book(asks=[_level("0.5", "1000")])
+    clob = MagicMock()
+    clob.create_order.return_value = "signed_order"
+    clob.post_order.return_value = {
+        "success": True,
+        "transactionHash": "0xabcdef" + "00" * 29,
+        "gasUsed": 150000,
+    }
+
+    executor = Web3CLOBExecutor(
+        clob_client=clob,
+        clob=_StubCLOB(book=book),
+        kill_switch=kill_switch,
+        max_size_usdc=Decimal("100"),
+        metrics=metrics,
+    )
+    result = await executor.execute(_trade(), Decimal("1"))
+
+    assert result.mode == ExecutionMode.REAL
+    assert result.success is True
+    assert result.expected_avg_price is not None
+
+
+async def test_web3_clob_executor_expected_avg_price_propagated_on_clob_error(
+    metrics: Metrics, kill_switch: KillSwitch
+) -> None:
+    """Falha na submissão: expected_avg_price ainda é propagado no resultado de erro."""
+    book = _book(asks=[_level("0.6", "1000")])
+    clob_client = MagicMock()
+    clob_client.create_order.side_effect = RuntimeError("rpc node down")
+
+    executor = Web3CLOBExecutor(
+        clob_client=clob_client,
+        clob=_StubCLOB(book=book),
+        kill_switch=kill_switch,
+        max_size_usdc=Decimal("100"),
+        metrics=metrics,
+    )
+    result = await executor.execute(_trade(), Decimal("1"))
+
+    assert result.success is False
+    assert result.failure_reason == FailureReason.RPC_ERROR
+    assert result.expected_avg_price is not None
+
+
+async def test_web3_clob_executor_expected_avg_price_none_when_book_fetch_fails(
+    metrics: Metrics, kill_switch: KillSwitch
+) -> None:
+    """get_book lança exception: expected_avg_price=None, mas execução prossegue."""
+    clob_client = MagicMock()
+    clob_client.create_order.return_value = "signed"
+    clob_client.post_order.return_value = {
+        "success": True,
+        "transactionHash": "0xabc",
+        "gasUsed": 100,
+    }
+
+    executor = Web3CLOBExecutor(
+        clob_client=clob_client,
+        clob=_StubCLOB(raise_exc=ConnectionError("book fetch failed")),
+        kill_switch=kill_switch,
+        max_size_usdc=Decimal("100"),
+        metrics=metrics,
+    )
+    result = await executor.execute(_trade(), Decimal("1"))
+
+    # Execução prosseguiu com sucesso, mas expected_avg_price indisponível
+    assert result.success is True
+    assert result.expected_avg_price is None

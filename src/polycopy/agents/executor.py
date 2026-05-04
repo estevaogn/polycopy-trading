@@ -299,8 +299,13 @@ async def main() -> None:
             build_clob_client,
             verify_allowance,
         )
+        from polycopy.infrastructure.polymarket.clob_client import PolymarketClobClient
 
         clob_client = build_clob_client(settings)
+        clob = PolymarketClobClient(
+            base_url=settings.polymarket_clob_api_url,
+            metrics=metrics,
+        )
 
         # Verifica allowance suficiente — fail-fast se setup_wallet não rodou.
         # Threshold = daily_max_usdc ($20 default) — garante que setup_wallet aprovou
@@ -318,6 +323,7 @@ async def main() -> None:
 
         executor = Web3CLOBExecutor(
             clob_client=clob_client,
+            clob=clob,
             kill_switch=kill_switch,
             max_size_usdc=settings.executor_max_size_usdc,
             metrics=metrics,
