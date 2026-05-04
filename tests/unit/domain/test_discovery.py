@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -13,8 +14,10 @@ from polycopy.domain.discovery import (
     TimePeriod,
     derive_label,
     filter_and_rank,
+    render_candidates_yaml,
 )
 from polycopy.domain.value_objects import WalletAddress
+from polycopy.infrastructure.wallets_seed import load_wallets_seed
 
 
 class TestEnums:
@@ -251,3 +254,38 @@ class TestFilterAndRank:
             top_n=10,
         )
         assert result[0].label == "alice"
+
+
+class TestRenderCandidatesYaml:
+    def _candidate(self, addr_hex: str, label: str) -> CandidateWallet:
+        return CandidateWallet(
+            address=WalletAddress(value="0x" + addr_hex),
+            label=label,
+            rank=1,
+            volume_usdc=Decimal("1000"),
+            pnl_usdc=Decimal("100"),
+            verified_badge=True,
+        )
+
+    def test_empty_list(self) -> None:
+        assert render_candidates_yaml([]) == "wallets: []\n"
+
+    def test_single_candidate_shape(self) -> None:
+        out = render_candidates_yaml([self._candidate("a" * 40, "alice")])
+        assert "wallets:" in out
+        assert 'address: "0x' + "a" * 40 + '"' in out
+        assert 'label: "alice"' in out
+
+    def test_roundtrip_via_load_wallets_seed(self, tmp_path: Path) -> None:
+        candidates = [
+            self._candidate("a" * 40, "alice"),
+            self._candidate("b" * 40, "bob"),
+        ]
+        yaml_text = render_candidates_yaml(candidates)
+        path = tmp_path / "out.yaml"
+        path.write_text(yaml_text, encoding="utf-8")
+        loaded = load_wallets_seed(path)
+        assert len(loaded) == 2
+        assert loaded[0].address.value == "0x" + "a" * 40
+        assert loaded[0].label == "alice"
+        assert loaded[1].label == "bob"
