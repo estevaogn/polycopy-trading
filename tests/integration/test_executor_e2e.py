@@ -35,6 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from polycopy.agents.executor import ExecutorAgent, _make_repo_factory
 from polycopy.config import Settings
 from polycopy.domain.events import OrderDryRun, OrderSized
+from polycopy.domain.market import OrderBook, OrderBookLevel
 from polycopy.domain.models import Side, Trade
 from polycopy.domain.value_objects import (
     ConditionId,
@@ -119,21 +120,39 @@ async def _cleanup_consumer(settings: Settings, durable: str) -> None:
         await nc.close()
 
 
+class _NullCLOB:
+    """Stub CLOB que retorna book vazio (expected_avg_price=None)."""
+
+    async def get_book(self, token_id: TokenId) -> OrderBook:
+        return OrderBook(
+            token_id=token_id,
+            asks=[],
+            bids=[],
+            captured_at=datetime.now(tz=UTC),
+        )
+
+
 async def _make_agent(
     *,
     db_session_factory: async_sessionmaker[AsyncSession],
     bus: NatsMessagingBus,
     metrics_registry: CollectorRegistry,
     durable_name: str,
+    clob: object | None = None,
 ) -> ExecutorAgent:
-    """Instancia + start de um ExecutorAgent isolado (registry e durable únicos)."""
+    """Instancia + start de um ExecutorAgent isolado (registry e durable únicos).
+
+    `clob` pode ser um stub customizado; se omitido, usa _NullCLOB (book vazio,
+    expected_avg_price=None — comportamento idêntico ao original).
+    """
     metrics = make_metrics(registry=metrics_registry)
     repo_factory = _make_repo_factory(db_session_factory)
+    effective_clob = clob if clob is not None else _NullCLOB()
 
     agent = ExecutorAgent(
         stopping=asyncio.Event(),
         bus=bus,
-        executor=DryRunExecutor(),
+        executor=DryRunExecutor(clob=effective_clob, metrics=metrics),  # type: ignore[arg-type]
         repo_factory=repo_factory,
         metrics=metrics,
         dry_run=True,
@@ -247,5 +266,72 @@ async def test_e2e_redelivery_idempotent(
 
         # 1 evento no bus (NATS dedup garantiu publish único)
         assert len(received_dry_run) == 1
+    finally:
+        await _cleanup_consumer(settings, durable)
+
+
+async def test_e2e_executor_persists_expected_avg_price(
+    db_session_factory: async_sessionmaker[AsyncSession],
+    bus: NatsMessagingBus,
+    settings: Settings,
+) -> None:
+    """E2E: order.sized → DryRunExecutor com CLOB stub → persiste expected_avg_price no DB.
+
+    Stub CLOB retorna 1 ask a 0.6 com 100 USDC de size. Para final_size_usdc=60,
+    a função calculate_expected_avg_price deve retornar exatamente 0.6 (liquidez
+    suficiente em nível único). O valor é gravado em order_executions.expected_avg_price
+    (Numeric 20,8 → Decimal("0.60000000")).
+    """
+
+    class _StubCLOB:
+        """Stub que retorna book conhecido: 1 ask a 0.6, size=100 USDC."""
+
+        async def get_book(self, token_id: TokenId) -> OrderBook:
+            return OrderBook(
+                token_id=token_id,
+                asks=[
+                    OrderBookLevel(
+                        price=Price(value=Decimal("0.6")),
+                        size=Money(amount=Decimal("100")),
+                    )
+                ],
+                bids=[],
+                captured_at=datetime.now(tz=UTC),
+            )
+
+    durable = f"executor-test-{uuid4().hex[:8]}"
+    try:
+        await _make_agent(
+            db_session_factory=db_session_factory,
+            bus=bus,
+            metrics_registry=CollectorRegistry(),
+            durable_name=durable,
+            clob=_StubCLOB(),
+        )
+
+        # Trade com token_id=111, final_size_usdc=60 → preenche liquidez do book a 0.6
+        trade = _trade(size_usdc="60", token_id="111")
+        event = OrderSized(
+            event_id=uuid4(),
+            occurred_at=trade.occurred_at,
+            decided_at=datetime.now(tz=UTC),
+            trade=trade,
+            final_size_usdc=Money.from_usdc("60"),
+            original_size_usdc=trade.size_usdc,
+        )
+
+        await bus.publish_order_sized(event)
+        await asyncio.sleep(2.0)  # tempo pro JetStream entregar + agent processar + commit
+
+        # Verifica que a row foi persistida com expected_avg_price correto
+        async with db_session_factory() as session:
+            result = await session.execute(
+                select(OrderExecutionRow).where(OrderExecutionRow.trade_event_id == event.event_id)
+            )
+            row = result.scalar_one()
+
+        assert row.expected_avg_price is not None
+        # Numeric(20, 8): 0.6 → Decimal("0.60000000"); Decimal("0.6") == Decimal("0.60000000")
+        assert abs(row.expected_avg_price - Decimal("0.6")) < Decimal("0.00000001")
     finally:
         await _cleanup_consumer(settings, durable)
