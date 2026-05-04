@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
 
@@ -139,3 +140,67 @@ def render_candidates_yaml(candidates: list[CandidateWallet]) -> str:
         lines.append(f'  - address: "{c.address.value}"')
         lines.append(f'    label: "{_escape_yaml_double_quoted(c.label)}"')
     return "\n".join(lines) + "\n"
+
+
+@dataclass(frozen=True)
+class ReportMetadata:
+    generated_at: datetime
+    time_period: TimePeriod
+    category: Category
+    order_by: OrderBy
+    min_volume_usdc: Decimal
+    top_requested: int
+    seed_path: str
+    seed_size: int
+    total_fetched: int
+    total_excluded_existing: int
+    total_excluded_min_volume: int
+    total_candidates: int
+
+
+def _escape_md_cell(text: str) -> str:
+    """Escape pipe chars so they don't break a markdown table row."""
+    return text.replace("|", "\\|")
+
+
+def render_report_md(
+    candidates: list[CandidateWallet],
+    *,
+    metadata: ReportMetadata,
+) -> str:
+    """Render the human-readable run report (frontmatter + markdown table)."""
+    m = metadata
+    fm = [
+        "---",
+        f"generated_at: {m.generated_at.isoformat()}",
+        f"time_period: {m.time_period.value}",
+        f"category: {m.category.value}",
+        f"order_by: {m.order_by.value}",
+        f"min_volume_usdc: {m.min_volume_usdc}",
+        f"top: {m.top_requested}",
+        f"seed_path: {m.seed_path}",
+        f"seed_size: {m.seed_size}",
+        f"total_fetched: {m.total_fetched}",
+        f"total_excluded_existing: {m.total_excluded_existing}",
+        f"total_excluded_min_volume: {m.total_excluded_min_volume}",
+        f"total_candidates: {m.total_candidates}",
+        "---",
+        "",
+        f"# Wallet candidates — {m.time_period.value}/{m.category.value} "
+        f"(run {m.generated_at:%Y-%m-%d %H:%M UTC})",
+        "",
+        "| Rank | userName | Address | Volume (USDC) | PnL (USDC) | Verified | Polymarket |",
+        "|---:|:--|:--|--:|--:|:--:|--|",
+    ]
+    rows: list[str] = []
+    for c in candidates:
+        addr = c.address.value
+        addr_short = f"{addr[:10]}…{addr[-4:]}"
+        verified = "yes" if c.verified_badge else "no"
+        link = f"https://polymarket.com/profile/{addr}"
+        rows.append(
+            f"| {c.rank} | {_escape_md_cell(c.label)} | {addr_short} | "
+            f"{c.volume_usdc:,.2f} | {c.pnl_usdc:+,.2f} | {verified} | "
+            f"[link]({link}) |"
+        )
+    return "\n".join(fm + rows) + "\n"
