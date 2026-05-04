@@ -19,6 +19,7 @@ from polycopy.domain.events import (
     OrderSized,
     OrderSkipped,
     RejectionReason,
+    ResolvedOutcome,
     SkipReason,
     TradeRejected,
     WalletTradeDetected,
@@ -26,6 +27,7 @@ from polycopy.domain.events import (
 from polycopy.domain.execution import ExecutionResult, OrderExecution
 from polycopy.domain.market import Market, OrderBook
 from polycopy.domain.models import Side, Trade
+from polycopy.domain.resolution import MarketResolution, ResolvedMarketDTO
 from polycopy.domain.risk import RiskDecision
 from polycopy.domain.sizing import OrderSizing
 from polycopy.domain.value_objects import (
@@ -38,6 +40,7 @@ from polycopy.domain.value_objects import (
 from polycopy.ports import (
     CachedMarket,
     MarketRepository,
+    MarketResolutionRepository,
     MessagingPort,
     OrderExecutionRepository,
     OrderExecutor,
@@ -148,6 +151,11 @@ class _FakeGamma:
         return None
 
     async def list_active_markets(self, *, limit: int) -> list[Market]:
+        return []
+
+    async def list_markets_by_condition_ids_closed(
+        self, *, condition_ids: list[str], limit: int
+    ) -> list[ResolvedMarketDTO]:
         return []
 
 
@@ -302,3 +310,34 @@ def test_execution_ports_importable() -> None:
     assert OrderExecuted is not None
     assert OrderFailed is not None
     assert OrderDryRun is not None
+
+
+class _FakeMarketResolutionRepo:
+    """Stub que implementa MarketResolutionRepository."""
+
+    def __init__(self) -> None:
+        self.inserted: list[MarketResolution] = []
+        self.unresolved_to_return: list[str] = []
+
+    async def insert(self, resolution: MarketResolution) -> bool:
+        self.inserted.append(resolution)
+        return True
+
+    async def get_unresolved_condition_ids(self, *, limit: int) -> list[str]:
+        return self.unresolved_to_return[:limit]
+
+
+def _accepts_market_resolution_repo(_: MarketResolutionRepository) -> None:
+    """Helper: mypy falha se o argumento não satisfizer MarketResolutionRepository."""
+
+
+def test_fake_market_resolution_repo_satisfies_port() -> None:
+    fake = _FakeMarketResolutionRepo()
+    _accepts_market_resolution_repo(fake)
+
+
+def test_resolution_ports_importable() -> None:
+    assert MarketResolutionRepository is not None
+    assert ResolvedOutcome is not None
+    assert MarketResolution is not None
+    assert ResolvedMarketDTO is not None

@@ -1,6 +1,7 @@
 """Ports: interfaces tipadas que adapters concretos implementam."""
 
 from polycopy.ports.market_repository import CachedMarket, MarketRepository
+from polycopy.ports.market_resolution_repository import MarketResolutionRepository
 from polycopy.ports.messaging import MessagingPort
 from polycopy.ports.order_execution_repository import OrderExecutionRepository
 from polycopy.ports.order_executor import OrderExecutor
@@ -14,6 +15,7 @@ from polycopy.ports.risk_decision_repository import RiskDecisionRepository
 __all__ = [
     "CachedMarket",
     "MarketRepository",
+    "MarketResolutionRepository",
     "MessagingPort",
     "OrderExecutionRepository",
     "OrderExecutor",

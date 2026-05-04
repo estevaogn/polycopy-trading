@@ -22,6 +22,7 @@ from tenacity import (
 )
 
 from polycopy.domain.market import Market
+from polycopy.domain.resolution import ResolvedMarketDTO
 from polycopy.domain.value_objects import ConditionId, Money, TokenId
 from polycopy.infrastructure.observability.metrics import Metrics
 
@@ -61,6 +62,24 @@ class PolymarketGammaClient:
                 if market.token_id.value == token_id.value:
                     return market
         return None
+
+    async def list_markets_by_condition_ids_closed(
+        self, *, condition_ids: list[str], limit: int
+    ) -> list[ResolvedMarketDTO]:
+        """Lista markets fechados por condition_ids. Implementação completa no Plano 5A."""
+        rows = await self._fetch_markets(
+            params={
+                "closed": "true",
+                "condition_ids": ",".join(condition_ids),
+                "limit": limit,
+            }
+        )
+        out: list[ResolvedMarketDTO] = []
+        for row in rows:
+            dto = self._row_to_resolved_market_dto(row)
+            if dto is not None:
+                out.append(dto)
+        return out
 
     async def list_active_markets(self, *, limit: int) -> list[Market]:
         """Retorna lista de Markets ativos ordenados por volume24hr decrescente."""
@@ -195,3 +214,55 @@ class PolymarketGammaClient:
                 )
             )
         return out
+
+    @staticmethod
+    def _row_to_resolved_market_dto(row: dict[str, Any]) -> ResolvedMarketDTO | None:
+        """Converte uma linha da Gamma API em ResolvedMarketDTO para markets fechados.
+
+        Retorna None se campos obrigatórios (conditionId, clobTokenIds) estiverem ausentes.
+        """
+        condition_id = row.get("conditionId")
+        if not isinstance(condition_id, str):
+            return None
+
+        token_ids_raw = row.get("clobTokenIds")
+        if isinstance(token_ids_raw, str):
+            token_ids_raw = json.loads(token_ids_raw)
+        if not isinstance(token_ids_raw, list) or len(token_ids_raw) != 2:
+            return None
+
+        yes_token_id = str(token_ids_raw[0])
+        no_token_id = str(token_ids_raw[1])
+
+        closed = bool(row.get("closed", False))
+
+        closed_time_raw = row.get("closedTime") or row.get("endDate")
+        closed_time = (
+            datetime.fromisoformat(closed_time_raw.replace("Z", "+00:00"))
+            if isinstance(closed_time_raw, str)
+            else None
+        )
+
+        outcome_prices_raw_val = row.get("outcomePrices", "[]")
+        outcome_prices_raw = (
+            outcome_prices_raw_val
+            if isinstance(outcome_prices_raw_val, str)
+            else json.dumps(outcome_prices_raw_val)
+        )
+
+        uma_statuses_raw_val = row.get("umaResolutionStatuses")
+        uma_resolution_statuses_raw = (
+            uma_statuses_raw_val
+            if isinstance(uma_statuses_raw_val, str) or uma_statuses_raw_val is None
+            else json.dumps(uma_statuses_raw_val)
+        )
+
+        return ResolvedMarketDTO(
+            condition_id=condition_id,
+            yes_token_id=yes_token_id,
+            no_token_id=no_token_id,
+            closed=closed,
+            closed_time=closed_time,
+            outcome_prices_raw=outcome_prices_raw,
+            uma_resolution_statuses_raw=uma_resolution_statuses_raw,
+        )
