@@ -36,6 +36,7 @@ class SqlAlchemyOrderExecutionRepository:
                     execution.failure_reason.value if execution.failure_reason is not None else None
                 ),
                 error_message=execution.error_message,
+                expected_avg_price=execution.expected_avg_price,
                 decided_at=execution.decided_at,
             )
             .on_conflict_do_nothing(index_elements=["trade_event_id"])
