@@ -18,7 +18,7 @@ def test_print_status_shows_balances_and_allowance(capsys: pytest.CaptureFixture
         usdc_balance=Decimal("20.0"),
         allowance=Decimal("0"),
         max_approval_usdc=100,
-        exchange_address="0xabc",
+        exchange_address="0x2222222222222222222222222222222222222222",
     )
     captured = capsys.readouterr()
     assert "0x" + "1" * 40 in captured.out
@@ -38,7 +38,7 @@ def test_approve_usdc_requires_yes_confirmation(monkeypatch: pytest.MonkeyPatch)
         usdc_contract=usdc_contract,
         wallet_address="0x" + "1" * 40,
         wallet_private_key="0x" + "ab" * 32,
-        exchange_address="0xabc",
+        exchange_address="0x2222222222222222222222222222222222222222",
         max_approval_usdc=100,
     )
     assert result is None  # Não fez approve
@@ -70,11 +70,13 @@ def test_approve_usdc_yes_calls_approve_with_cap(
             usdc_contract=usdc_contract,
             wallet_address="0x" + "1" * 40,
             wallet_private_key="0x" + "ab" * 32,
-            exchange_address="0xabc",
+            exchange_address="0x2222222222222222222222222222222222222222",
             max_approval_usdc=100,
         )
         # Verifica approve chamado com 100 USDC * 10^6 micro-USDC
-        usdc_contract.functions.approve.assert_called_once_with("0xabc", 100 * 10**6)
+        usdc_contract.functions.approve.assert_called_once_with(
+            "0x2222222222222222222222222222222222222222", 100 * 10**6
+        )
         assert result is not None  # tx_hash retornado
 
 
@@ -103,7 +105,7 @@ def test_approve_usdc_prints_polygonscan_url(
             usdc_contract=usdc_contract,
             wallet_address="0x" + "1" * 40,
             wallet_private_key="0x" + "ab" * 32,
-            exchange_address="0xabc",
+            exchange_address="0x2222222222222222222222222222222222222222",
             max_approval_usdc=100,
         )
     captured = capsys.readouterr()
