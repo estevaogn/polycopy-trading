@@ -156,6 +156,57 @@ Métricas: `polycopy_resolver_sync{result}`,
 
 Container: `polycopy-resolver`. Endpoint `/metrics`: porta 9107.
 
+### Backtest (Plano 5C)
+
+Após resoluções de mercados (Plano 5A) e captura de `expected_avg_price` (Plano 5B), o sistema computa **PnL hipotético** — quanto teria sido ganho/perdido se real-mode estivesse ativo.
+
+#### View `hypothetical_pnl`
+
+SQL view (não materializada) cruza `order_executions` com `market_resolutions` via `condition_id`. Colunas computadas:
+
+- `qty_tokens` = `final_size_usdc / expected_avg_price` (ou NULL).
+- `payout_per_token` = 1.0 se win, 0.0 se lose, 0.5 se INVALID, NULL se pending/sell_excluded.
+- `pnl_usdc` = `qty * payout - size` (ou NULL).
+- `status` ∈ `{win, lose, invalid, pending, sell_excluded, no_expected_price}`.
+
+V1 cobre apenas trades BUY (Polymarket primário). SELL hipotéticos ficam como follow-up.
+
+#### CLI `backtest.py`
+
+```bash
+uv run python -m polycopy.scripts.backtest --since 7d --by wallet --format table
+```
+
+Args:
+- `--since`: período (ex: `7d`, `24h`, `1w`). Default `7d`.
+- `--by`: agrupa por `wallet` ou `none`. Default `none`.
+- `--format`: `table` (default) ou `json`.
+
+Output exemplo:
+```
+=== Backtest Summary ===
+Period:        últimos 7 days, 0:00:00
+Trades total:  42
+  - Resolved:  35 (win 18, lose 14, invalid 3)
+  - Pending:    5
+  - Excluded:   2 (sell 1, no_price 1)
+
+PnL hipotético:  $-3.45 USDC
+Winrate:         51.4% (18 / 35 resolved excluindo invalid)
+```
+
+#### Métricas Prometheus
+
+ResolverAgent expõe 5 gauges (atualizadas a cada loop, intervalo `RESOLVER_SYNC_INTERVAL_SECONDS`, default 1h):
+
+- `polycopy_hypothetical_pnl_total_usdc` — soma cumulativa.
+- `polycopy_hypothetical_pnl_24h_usdc` — soma últimas 24h.
+- `polycopy_hypothetical_winrate` — 0..1 (exclui invalid do denominador).
+- `polycopy_hypothetical_trades_resolved` — count.
+- `polycopy_hypothetical_trades_pending` — count.
+
+Endpoint: `http://127.0.0.1:9107/metrics` (porta do ResolverAgent).
+
 ### Bus de eventos
 
 `NatsMessagingBus` (`src/polycopy/infrastructure/messaging/nats_bus.py`) cria stream `WALLET_TRADES` (subject filter `wallet.trade.>`, max_age 7d, file storage, replicas 1) idempotentemente em `connect()`. Suporta:
@@ -234,6 +285,11 @@ uv run python -m polycopy.agents.notifier
 | `polycopy_resolver_sync_duration_seconds` | Histogram | — | resolver |
 | `polycopy_resolver_resolutions_detected_total` | Counter | `outcome` (`yes\|no\|invalid`) | resolver |
 | `polycopy_resolver_unresolved_pending` | Gauge | — | resolver |
+| `polycopy_hypothetical_pnl_total_usdc` | Gauge | — | resolver | PnL hipotético acumulado |
+| `polycopy_hypothetical_pnl_24h_usdc` | Gauge | — | resolver | PnL hipotético 24h |
+| `polycopy_hypothetical_winrate` | Gauge | — | resolver | Taxa de vitória 0..1 |
+| `polycopy_hypothetical_trades_resolved` | Gauge | — | resolver | Trades resolvidos |
+| `polycopy_hypothetical_trades_pending` | Gauge | — | resolver | Trades aguardando resolução |
 
 Logs estruturados via `structlog` (JSON em prod, console colorido em dev).
 
