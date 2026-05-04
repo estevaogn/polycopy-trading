@@ -119,3 +119,14 @@ def filter_and_rank(
         if len(out) >= top_n:
             break
     return out
+
+
+def render_candidates_yaml(candidates: list[CandidateWallet]) -> str:
+    """Render candidates as YAML matching wallets_seed.yaml schema."""
+    if not candidates:
+        return "wallets: []\n"
+    lines = ["wallets:"]
+    for c in candidates:
+        lines.append(f'  - address: "{c.address.value}"')
+        lines.append(f'    label: "{c.label}"')
+    return "\n".join(lines) + "\n"
