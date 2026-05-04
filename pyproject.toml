@@ -43,6 +43,7 @@ dev = [
     "commitizen>=4",
     "respx>=0.21",
     "types-PyYAML>=6.0",
+    "psycopg[binary]>=3.2",
 ]
 
 [tool.ruff]
