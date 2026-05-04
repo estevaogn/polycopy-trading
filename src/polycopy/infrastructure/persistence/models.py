@@ -260,3 +260,32 @@ class OrderExecutionRow(Base):
             postgresql_using="btree",
         ),
     )
+
+
+class MarketResolutionRow(Base):
+    __tablename__ = "market_resolutions"
+
+    condition_id: Mapped[str] = mapped_column(String, primary_key=True)
+    resolved_outcome: Mapped[str] = mapped_column(String, nullable=False)
+    winning_token_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    closed_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    outcome_prices_raw: Mapped[str] = mapped_column(String, nullable=False)
+    uma_resolution_statuses_raw: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "resolved_outcome IN ('YES', 'NO', 'INVALID')",
+            name="market_resolutions_outcome_enum",
+        ),
+        CheckConstraint(
+            "(resolved_outcome IN ('YES', 'NO') AND winning_token_id IS NOT NULL) "
+            "OR (resolved_outcome = 'INVALID' AND winning_token_id IS NULL)",
+            name="market_resolutions_winning_token_consistency",
+        ),
+        Index("idx_market_resolutions_resolved_at", "resolved_at"),
+        Index("idx_market_resolutions_outcome", "resolved_outcome"),
+    )
