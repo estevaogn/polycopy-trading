@@ -12,6 +12,7 @@ from polycopy.domain.discovery import (
     OrderBy,
     TimePeriod,
     derive_label,
+    filter_and_rank,
 )
 from polycopy.domain.value_objects import WalletAddress
 
@@ -141,3 +142,112 @@ class TestDeriveLabel:
     def test_user_name_only_non_printable_falls_back(self) -> None:
         result = derive_label(self._entry(addr_hex="cafef00d" + "0" * 32, user_name="\x00\x01"))
         assert result == "0xcafef00d…"
+
+
+class TestFilterAndRank:
+    def _entry(
+        self,
+        *,
+        rank: int,
+        addr_hex: str,
+        vol: str,
+        pnl: str,
+        name: str = "user",
+    ) -> LeaderboardEntry:
+        return LeaderboardEntry(
+            rank=rank,
+            address=WalletAddress(value="0x" + addr_hex),
+            user_name=name,
+            volume_usdc=Decimal(vol),
+            pnl_usdc=Decimal(pnl),
+            verified_badge=False,
+        )
+
+    def test_keeps_order_from_input(self) -> None:
+        entries = [
+            self._entry(rank=1, addr_hex="a" * 40, vol="20000", pnl="500"),
+            self._entry(rank=2, addr_hex="b" * 40, vol="20000", pnl="400"),
+            self._entry(rank=3, addr_hex="c" * 40, vol="20000", pnl="300"),
+        ]
+        result = filter_and_rank(
+            entries,
+            min_volume_usdc=Decimal("0"),
+            exclude=set(),
+            top_n=10,
+        )
+        assert [c.rank for c in result] == [1, 2, 3]
+
+    def test_excludes_seed_addresses(self) -> None:
+        excluded = WalletAddress(value="0x" + "a" * 40)
+        entries = [
+            self._entry(rank=1, addr_hex="a" * 40, vol="20000", pnl="500"),
+            self._entry(rank=2, addr_hex="b" * 40, vol="20000", pnl="400"),
+        ]
+        result = filter_and_rank(
+            entries,
+            min_volume_usdc=Decimal("0"),
+            exclude={excluded},
+            top_n=10,
+        )
+        assert len(result) == 1
+        assert result[0].address.value == "0x" + "b" * 40
+
+    def test_filters_by_min_volume(self) -> None:
+        entries = [
+            self._entry(rank=1, addr_hex="a" * 40, vol="100", pnl="500"),
+            self._entry(rank=2, addr_hex="b" * 40, vol="20000", pnl="400"),
+        ]
+        result = filter_and_rank(
+            entries,
+            min_volume_usdc=Decimal("1000"),
+            exclude=set(),
+            top_n=10,
+        )
+        assert len(result) == 1
+        assert result[0].address.value == "0x" + "b" * 40
+
+    def test_top_n_caps_output(self) -> None:
+        entries = [
+            self._entry(rank=i, addr_hex=f"{i:040x}", vol="20000", pnl="100") for i in range(1, 6)
+        ]
+        result = filter_and_rank(
+            entries,
+            min_volume_usdc=Decimal("0"),
+            exclude=set(),
+            top_n=2,
+        )
+        assert len(result) == 2
+
+    def test_dedups_by_address(self) -> None:
+        entries = [
+            self._entry(rank=1, addr_hex="a" * 40, vol="20000", pnl="500"),
+            self._entry(rank=2, addr_hex="a" * 40, vol="20000", pnl="500"),
+        ]
+        result = filter_and_rank(
+            entries,
+            min_volume_usdc=Decimal("0"),
+            exclude=set(),
+            top_n=10,
+        )
+        assert len(result) == 1
+
+    def test_empty_input(self) -> None:
+        result = filter_and_rank(
+            [],
+            min_volume_usdc=Decimal("0"),
+            exclude=set(),
+            top_n=10,
+        )
+        assert result == []
+
+    def test_label_derived_in_output(self) -> None:
+        entries = [
+            self._entry(rank=1, addr_hex="a" * 40, vol="20000", pnl="500", name="alice"),
+        ]
+        result = filter_and_rank(
+            entries,
+            min_volume_usdc=Decimal("0"),
+            exclude=set(),
+            top_n=10,
+        )
+        assert result[0].label == "alice"
