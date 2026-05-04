@@ -29,6 +29,7 @@ flowchart LR
             R[polycopy-risk]
             S[polycopy-sizing]
             E[polycopy-executor]
+            RES[polycopy-resolver]
         end
     end
 
@@ -50,12 +51,16 @@ flowchart LR
     NATS -->|durable consumer executor-1\norder.sized| E
     E -->|insert order_executions\nPK trade_event_id| PG
     E -->|publish order.executed\norder.failed or order.dry_run| NATS
+    PG -->|read condition_ids\nwallet_trades unresolved| RES
+    GAMMA -->|list_markets_by_condition_ids_closed| RES
+    RES -->|insert idempotente\nmarket_resolutions| PG
     PROM -.->|scrape /metrics:9101| W
     PROM -.->|scrape /metrics:9102| N
     PROM -.->|scrape /metrics:9103| M
     PROM -.->|scrape /metrics:9104| R
     PROM -.->|scrape /metrics:9105| S
     PROM -.->|scrape /metrics:9106| E
+    PROM -.->|scrape /metrics:9107| RES
 ```
 
 ## Componentes
@@ -132,6 +137,25 @@ Métricas: `polycopy_executor_orders_total{result, mode, reason}`,
 
 Container: `polycopy-executor`. Endpoint `/metrics`: porta 9106.
 
+### ResolverAgent (Plano 5A)
+
+Polling-driven agent que detecta quando markets do Polymarket resolvem
+(YES/NO/INVALID) e grava em `market_resolutions`. Loop a cada 1h:
+lê `condition_ids` de `wallet_trades` sem resolução, consulta Gamma
+com filtro `closed=true`, classifica `outcomePrices` por tolerância
+(≥0.99/≤0.01 terminais; 0.45-0.55 INVALID; senão pending=skip),
+insere idempotentemente.
+
+Sem JetStream — append-only, fonte de verdade pra PnL hipotético do
+backtest (Plano 5C).
+
+Métricas: `polycopy_resolver_sync{result}`,
+`polycopy_resolver_sync_duration_seconds`,
+`polycopy_resolver_resolutions_detected{outcome}`,
+`polycopy_resolver_unresolved_pending`.
+
+Container: `polycopy-resolver`. Endpoint `/metrics`: porta 9107.
+
 ### Bus de eventos
 
 `NatsMessagingBus` (`src/polycopy/infrastructure/messaging/nats_bus.py`) cria stream `WALLET_TRADES` (subject filter `wallet.trade.>`, max_age 7d, file storage, replicas 1) idempotentemente em `connect()`. Suporta:
@@ -165,6 +189,7 @@ docker compose logs -f watcher notifier
 - risk: `http://127.0.0.1:9104/metrics`
 - sizing: `http://127.0.0.1:9105/metrics`
 - executor: `http://127.0.0.1:9106/metrics`
+- resolver: `http://127.0.0.1:9107/metrics`
 - prometheus UI: `http://127.0.0.1:9090/`
 
 ### Local sem Docker (dev)
@@ -205,6 +230,10 @@ uv run python -m polycopy.agents.notifier
 | `polycopy_executor_orders_total` | Counter | `result` (`executed\|failed\|dry_run`), `mode`, `reason` | executor |
 | `polycopy_executor_decision_duration_seconds` | Histogram | — | executor |
 | `polycopy_executor_gas_wei` | Histogram | — | executor |
+| `polycopy_resolver_sync_total` | Counter | `result` (`ok\|fail`) | resolver |
+| `polycopy_resolver_sync_duration_seconds` | Histogram | — | resolver |
+| `polycopy_resolver_resolutions_detected_total` | Counter | `outcome` (`yes\|no\|invalid`) | resolver |
+| `polycopy_resolver_unresolved_pending` | Gauge | — | resolver |
 
 Logs estruturados via `structlog` (JSON em prod, console colorido em dev).
 

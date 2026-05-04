@@ -23,3 +23,6 @@ scrape_configs:
   - job_name: polycopy-executor
     static_configs:
       - targets: ['polycopy-executor:9106']
+  - job_name: polycopy-resolver
+    static_configs:
+      - targets: ['polycopy-resolver:9107']
