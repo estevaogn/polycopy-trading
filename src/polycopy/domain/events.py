@@ -319,3 +319,11 @@ class OrderDryRun(BaseModel):
         if v.tzinfo is None:
             raise ValueError("decided_at must be timezone-aware")
         return v
+
+
+class ResolvedOutcome(StrEnum):
+    """Outcome final de um market resolvido (Plano 5A)."""
+
+    YES = "YES"
+    NO = "NO"
+    INVALID = "INVALID"  # disputed, cancelled, ou outcomes 50/50 split
