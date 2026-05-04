@@ -127,6 +127,7 @@ class ExecutorAgent(AgentBase):
                 wallet=event.trade.wallet.value,
                 condition_id=event.trade.condition_id.value,
                 token_id=event.trade.token_id.value,
+                side=event.trade.side.value,  # Plano 5C
                 final_size_usdc=event.final_size_usdc.amount,
                 mode=exec_result.mode,
                 result=result_label,

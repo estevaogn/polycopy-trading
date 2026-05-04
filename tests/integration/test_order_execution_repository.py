@@ -36,6 +36,7 @@ def _execution_dry_run(
         wallet=_VALID_WALLET,
         condition_id=_VALID_COND,
         token_id=_VALID_TOKEN,
+        side="BUY",
         final_size_usdc=final_size,
         mode=ExecutionMode.DRY_RUN,
         result="dry_run",
@@ -58,6 +59,7 @@ def _execution_executed(
         wallet=_VALID_WALLET,
         condition_id=_VALID_COND,
         token_id=_VALID_TOKEN,
+        side="BUY",
         final_size_usdc=final_size,
         mode=ExecutionMode.REAL,
         result="executed",
@@ -80,6 +82,7 @@ def _execution_failed(
         wallet=_VALID_WALLET,
         condition_id=_VALID_COND,
         token_id=_VALID_TOKEN,
+        side="BUY",
         final_size_usdc=final_size,
         mode=ExecutionMode.REAL,
         result="failed",
@@ -188,10 +191,10 @@ async def test_insert_real_with_dry_run_result_violates_constraint(
             await session.execute(
                 text(
                     "INSERT INTO order_executions "
-                    "(trade_event_id, wallet, condition_id, token_id, "
+                    "(trade_event_id, wallet, condition_id, token_id, side, "
                     "final_size_usdc, mode, result, tx_hash, gas_wei, "
                     "failure_reason, error_message, decided_at) "
-                    "VALUES (:id, :w, :c, :t, 10, 'real', 'dry_run', "
+                    "VALUES (:id, :w, :c, :t, 'BUY', 10, 'real', 'dry_run', "
                     "NULL, NULL, NULL, NULL, now())"
                 ),
                 {

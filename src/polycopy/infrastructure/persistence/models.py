@@ -196,6 +196,7 @@ class OrderExecutionRow(Base):
     wallet: Mapped[str] = mapped_column(String, nullable=False)
     condition_id: Mapped[str] = mapped_column(String, nullable=False)
     token_id: Mapped[str] = mapped_column(String, nullable=False)
+    side: Mapped[str] = mapped_column(String, nullable=False)  # Plano 5C
     final_size_usdc: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
     mode: Mapped[str] = mapped_column(String, nullable=False)
     result: Mapped[str] = mapped_column(String, nullable=False)

@@ -45,6 +45,7 @@ class OrderExecution:
     wallet: str
     condition_id: str
     token_id: str
+    side: Literal["BUY", "SELL"]  # Plano 5C
     final_size_usdc: Decimal
     mode: ExecutionMode
     result: Literal["executed", "failed", "dry_run"]

@@ -27,6 +27,7 @@ class SqlAlchemyOrderExecutionRepository:
                 wallet=execution.wallet,
                 condition_id=execution.condition_id,
                 token_id=execution.token_id,
+                side=execution.side,  # Plano 5C
                 final_size_usdc=execution.final_size_usdc,
                 mode=execution.mode.value,
                 result=execution.result,
