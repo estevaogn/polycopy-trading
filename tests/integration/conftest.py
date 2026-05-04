@@ -1,4 +1,4 @@
-"""Shared test fixtures and bootstrap.
+"""Integration test fixtures and bootstrap.
 
 - `settings`: singleton Settings carregada do `.env`.
 - `db_engine`: engine async session-scope; roda `alembic upgrade head` no início.
@@ -39,7 +39,7 @@ from polycopy.infrastructure.persistence.database import make_session_factory
 if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 @pytest.fixture(scope="session")

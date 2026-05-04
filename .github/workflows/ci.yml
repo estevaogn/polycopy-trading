@@ -42,5 +42,5 @@ jobs:
       - name: Mypy
         run: uv run mypy src
 
-      - name: Pytest
-        run: uv run pytest --cov=src/polycopy --cov-report=term
+      - name: Pytest (unit + smoke)
+        run: uv run pytest tests/unit tests/test_smoke.py --cov=src/polycopy --cov-report=term
