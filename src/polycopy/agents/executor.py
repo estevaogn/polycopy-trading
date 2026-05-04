@@ -135,6 +135,7 @@ class ExecutorAgent(AgentBase):
                 failure_reason=exec_result.failure_reason,
                 error_message=exec_result.error_message,
                 decided_at=datetime.now(tz=UTC),
+                expected_avg_price=exec_result.expected_avg_price,
             )
 
             async with self._repo_factory() as repo:
