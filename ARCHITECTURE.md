@@ -237,6 +237,33 @@ uv run python -m polycopy.agents.notifier
 
 Logs estruturados via `structlog` (JSON em prod, console colorido em dev).
 
+## Running tests
+
+A suite `pytest tests/` roda contra um DB lógico separado (`polycopy_test`) no mesmo container Postgres. Produção (`polycopy`) permanece intocada — nenhum dado coletado em DRY-RUN é perdido por execução de testes.
+
+**Setup automático:** `tests/conftest.py` (fixture `_ensure_test_db`, autouse session-scoped) cria `polycopy_test` on-demand na primeira execução via psycopg admin connection. Schema é re-aplicado via alembic a cada session. Teardown dropa as tabelas (mas mantém o DB pra próximas sessions).
+
+**Pré-requisito:** o user Postgres precisa de privilege `CREATEDB`. Default no compose local. Pra ambientes que não permitem (ex: managed Postgres em CI futuro), criar `polycopy_test` manualmente antes:
+
+```sql
+CREATE DATABASE polycopy_test;
+```
+
+**Canário de isolação:** `tests/integration/test_db_isolation.py` confirma que cada session de pytest roda contra `polycopy_test`. Se este teste falhar, **pare imediatamente** — algum monkeypatch quebrou e os testes podem estar tocando produção.
+
+**Comandos úteis:**
+
+```bash
+# Estado da prod
+docker compose exec postgres psql -U polycopy -d polycopy -c "\dt"
+
+# Estado do test DB
+docker compose exec postgres psql -U polycopy -d polycopy_test -c "\dt"
+
+# Drop test DB (raro — só pra reset completo)
+docker compose exec postgres psql -U polycopy -d postgres -c "DROP DATABASE polycopy_test"
+```
+
 ## Decisões registradas
 
 Veja `docs/superpowers/specs/2026-05-01-fase-1c-agentes-design.md`.
