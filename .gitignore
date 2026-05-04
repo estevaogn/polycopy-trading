@@ -25,6 +25,10 @@ env/
 # Local-only config (use the .example.yaml as template)
 config/wallets_seed.yaml
 
+# Generated artifacts from discover_wallets CLI (Fase 6)
+config/wallets_candidates.yaml
+docs/discover_wallets_report.md
+
 # Testing & coverage
 .pytest_cache/
 .coverage
