@@ -141,6 +141,11 @@ class Settings(BaseSettings):
         alias="EXECUTOR_PAUSE_FILE",
     )
 
+    # Resolver agent (Plano 5A)
+    resolver_metrics_port: int = Field(9107, alias="RESOLVER_METRICS_PORT")
+    resolver_sync_interval_s: float = Field(3600.0, alias="RESOLVER_SYNC_INTERVAL_SECONDS")
+    resolver_batch_size: int = Field(100, alias="RESOLVER_BATCH_SIZE")
+
     @property
     def postgres_dsn(self) -> str:
         """DSN sync (psycopg-style)."""

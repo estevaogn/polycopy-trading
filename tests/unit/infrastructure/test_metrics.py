@@ -242,3 +242,42 @@ def test_metrics_executor_consecutive_failures_gauge() -> None:
     samples = list(registry.collect())
     matching = [m for m in samples if m.name == "polycopy_executor_consecutive_failures"]
     assert matching
+
+
+def test_metrics_resolver_sync_counter() -> None:
+    registry = CollectorRegistry()
+    metrics = make_metrics(registry=registry)
+    metrics.resolver_sync_total.labels(result="ok").inc()
+    metrics.resolver_sync_total.labels(result="fail").inc()
+    samples = list(registry.collect())
+    matching = [m for m in samples if m.name == "polycopy_resolver_sync"]
+    assert len(matching) == 1
+
+
+def test_metrics_resolver_sync_duration_histogram() -> None:
+    registry = CollectorRegistry()
+    metrics = make_metrics(registry=registry)
+    metrics.resolver_sync_duration_seconds.observe(1.5)
+    samples = list(registry.collect())
+    matching = [m for m in samples if m.name == "polycopy_resolver_sync_duration_seconds"]
+    assert matching
+
+
+def test_metrics_resolver_resolutions_detected_counter() -> None:
+    registry = CollectorRegistry()
+    metrics = make_metrics(registry=registry)
+    metrics.resolver_resolutions_detected_total.labels(outcome="yes").inc()
+    metrics.resolver_resolutions_detected_total.labels(outcome="no").inc()
+    metrics.resolver_resolutions_detected_total.labels(outcome="invalid").inc()
+    samples = list(registry.collect())
+    matching = [m for m in samples if m.name == "polycopy_resolver_resolutions_detected"]
+    assert len(matching) == 1
+
+
+def test_metrics_resolver_unresolved_pending_gauge() -> None:
+    registry = CollectorRegistry()
+    metrics = make_metrics(registry=registry)
+    metrics.resolver_unresolved_pending.set(42)
+    samples = list(registry.collect())
+    matching = [m for m in samples if m.name == "polycopy_resolver_unresolved_pending"]
+    assert matching

@@ -48,6 +48,12 @@ class Metrics:
     executor_wallet_balance_usdc: Gauge
     executor_consecutive_failures: Gauge
 
+    # Resolver agent (Plano 5A)
+    resolver_sync_total: Counter
+    resolver_sync_duration_seconds: Histogram
+    resolver_resolutions_detected_total: Counter
+    resolver_unresolved_pending: Gauge
+
 
 def make_metrics(registry: CollectorRegistry | None = None) -> Metrics:
     target = registry if registry is not None else REGISTRY
@@ -198,6 +204,28 @@ def make_metrics(registry: CollectorRegistry | None = None) -> Metrics:
         executor_consecutive_failures=Gauge(
             "polycopy_executor_consecutive_failures",
             "Contador atual do circuit breaker (0=saudável; ≥3=trippado).",
+            registry=target,
+        ),
+        resolver_sync_total=Counter(
+            "polycopy_resolver_sync",
+            "Iterações de sync do ResolverAgent.",
+            labelnames=["result"],
+            registry=target,
+        ),
+        resolver_sync_duration_seconds=Histogram(
+            "polycopy_resolver_sync_duration_seconds",
+            "Duração end-to-end de uma iteração de sync.",
+            registry=target,
+        ),
+        resolver_resolutions_detected_total=Counter(
+            "polycopy_resolver_resolutions_detected",
+            "Resoluções gravadas em market_resolutions.",
+            labelnames=["outcome"],
+            registry=target,
+        ),
+        resolver_unresolved_pending=Gauge(
+            "polycopy_resolver_unresolved_pending",
+            "Backlog atual de condition_ids unresolved (atualizado a cada loop).",
             registry=target,
         ),
     )
