@@ -121,6 +121,15 @@ def filter_and_rank(
     return out
 
 
+def _escape_yaml_double_quoted(value: str) -> str:
+    """Escape a string for use inside a YAML double-quoted scalar.
+
+    YAML double-quoted strings recognize C-style escapes; we only need to
+    escape backslash (must come first) and double quote.
+    """
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
 def render_candidates_yaml(candidates: list[CandidateWallet]) -> str:
     """Render candidates as YAML matching wallets_seed.yaml schema."""
     if not candidates:
@@ -128,5 +137,5 @@ def render_candidates_yaml(candidates: list[CandidateWallet]) -> str:
     lines = ["wallets:"]
     for c in candidates:
         lines.append(f'  - address: "{c.address.value}"')
-        lines.append(f'    label: "{c.label}"')
+        lines.append(f'    label: "{_escape_yaml_double_quoted(c.label)}"')
     return "\n".join(lines) + "\n"
