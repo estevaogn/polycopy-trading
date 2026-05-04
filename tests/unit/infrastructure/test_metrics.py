@@ -281,3 +281,14 @@ def test_metrics_resolver_unresolved_pending_gauge() -> None:
     samples = list(registry.collect())
     matching = [m for m in samples if m.name == "polycopy_resolver_unresolved_pending"]
     assert matching
+
+
+def test_metrics_executor_expected_price_unavailable_counter() -> None:
+    registry = CollectorRegistry()
+    metrics = make_metrics(registry=registry)
+    metrics.executor_expected_price_unavailable_total.labels(reason="empty_book").inc()
+    metrics.executor_expected_price_unavailable_total.labels(reason="insufficient_volume").inc()
+    metrics.executor_expected_price_unavailable_total.labels(reason="fetch_failed").inc()
+    samples = list(registry.collect())
+    matching = [m for m in samples if m.name == "polycopy_executor_expected_price_unavailable"]
+    assert len(matching) == 1

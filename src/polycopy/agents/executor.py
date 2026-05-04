@@ -276,8 +276,13 @@ async def main() -> None:
     executor: OrderExecutor
     if settings.executor_dry_run:
         from polycopy.infrastructure.execution.dry_run_executor import DryRunExecutor
+        from polycopy.infrastructure.polymarket.clob_client import PolymarketClobClient
 
-        executor = DryRunExecutor()
+        clob = PolymarketClobClient(
+            base_url=settings.polymarket_clob_api_url,
+            metrics=metrics,
+        )
+        executor = DryRunExecutor(clob=clob, metrics=metrics)
     else:
         # Triple safety gates pra real-mode
         if not settings.executor_real_mode_confirmed:

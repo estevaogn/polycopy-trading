@@ -54,6 +54,9 @@ class Metrics:
     resolver_resolutions_detected_total: Counter
     resolver_unresolved_pending: Gauge
 
+    # Executor expected price (Plano 5B)
+    executor_expected_price_unavailable_total: Counter
+
 
 def make_metrics(registry: CollectorRegistry | None = None) -> Metrics:
     target = registry if registry is not None else REGISTRY
@@ -226,6 +229,12 @@ def make_metrics(registry: CollectorRegistry | None = None) -> Metrics:
         resolver_unresolved_pending=Gauge(
             "polycopy_resolver_unresolved_pending",
             "Backlog atual de condition_ids unresolved (atualizado a cada loop).",
+            registry=target,
+        ),
+        executor_expected_price_unavailable_total=Counter(
+            "polycopy_executor_expected_price_unavailable",
+            "Trades onde expected_avg_price não pôde ser calculado.",
+            labelnames=["reason"],
             registry=target,
         ),
     )
