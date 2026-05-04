@@ -19,7 +19,9 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
+from typing import TYPE_CHECKING
 
+import psycopg
 import pytest
 from alembic import command
 from alembic.config import Config
@@ -34,11 +36,44 @@ from sqlalchemy.pool import NullPool
 from polycopy.config import Settings
 from polycopy.infrastructure.persistence.database import make_session_factory
 
+if TYPE_CHECKING:
+    from _pytest.monkeypatch import MonkeyPatch
+
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 @pytest.fixture(scope="session")
-def settings() -> Settings:
+def monkeypatch_session() -> Iterator[MonkeyPatch]:
+    """Monkeypatch com escopo session (pytest built-in é function-scoped)."""
+    from _pytest.monkeypatch import MonkeyPatch
+
+    mp = MonkeyPatch()
+    yield mp
+    mp.undo()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _ensure_test_db(monkeypatch_session: MonkeyPatch) -> None:
+    """Cria polycopy_test se não existir; override POSTGRES_DB pra esta sessão."""
+    test_db = "polycopy_test"
+    base_settings = Settings()
+
+    admin_dsn = (
+        f"postgresql://{base_settings.postgres_user}:"
+        f"{base_settings.postgres_password.get_secret_value()}@"
+        f"{base_settings.postgres_host}:{base_settings.postgres_port}/postgres"
+    )
+
+    with psycopg.connect(admin_dsn, autocommit=True) as conn, conn.cursor() as cur:
+        cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (test_db,))
+        if cur.fetchone() is None:
+            cur.execute(f'CREATE DATABASE "{test_db}"')  # noqa: S608  # safe: test_db is hardcoded literal
+
+    monkeypatch_session.setenv("POSTGRES_DB", test_db)
+
+
+@pytest.fixture(scope="session")
+def settings(_ensure_test_db: None) -> Settings:
     """Singleton Settings carregada do `.env`. Use em testes integration."""
     return Settings()  # type: ignore[call-arg]
 
@@ -51,7 +86,11 @@ def alembic_config() -> Config:
 
 
 @pytest.fixture(scope="session")
-def db_engine(settings: Settings, alembic_config: Config) -> Iterator[AsyncEngine]:
+def db_engine(
+    settings: Settings,
+    alembic_config: Config,
+    _ensure_test_db: None,  # noqa: PT019 — força ordem antes do upgrade
+) -> Iterator[AsyncEngine]:
     """Engine async session-scope. Migra schema antes; dropa tudo no fim.
 
     Fixture é SYNC para que alembic.command.upgrade/downgrade possam chamar
