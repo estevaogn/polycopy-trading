@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -11,10 +12,12 @@ from polycopy.domain.discovery import (
     Category,
     LeaderboardEntry,
     OrderBy,
+    ReportMetadata,
     TimePeriod,
     derive_label,
     filter_and_rank,
     render_candidates_yaml,
+    render_report_md,
 )
 from polycopy.domain.value_objects import WalletAddress
 from polycopy.infrastructure.wallets_seed import load_wallets_seed
@@ -300,3 +303,79 @@ class TestRenderCandidatesYaml:
         loaded = load_wallets_seed(path)
         assert len(loaded) == 1
         assert loaded[0].label == 'al"i\\ce'
+
+
+class TestRenderReportMd:
+    def _candidate(
+        self, addr_hex: str, label: str, vol: str, pnl: str, verified: bool = True
+    ) -> CandidateWallet:
+        return CandidateWallet(
+            address=WalletAddress(value="0x" + addr_hex),
+            label=label,
+            rank=1,
+            volume_usdc=Decimal(vol),
+            pnl_usdc=Decimal(pnl),
+            verified_badge=verified,
+        )
+
+    def _meta(self) -> ReportMetadata:
+        return ReportMetadata(
+            generated_at=datetime(2026, 5, 4, 20, 30, 0, tzinfo=UTC),
+            time_period=TimePeriod.MONTH,
+            category=Category.OVERALL,
+            order_by=OrderBy.PNL,
+            min_volume_usdc=Decimal("5000"),
+            top_requested=50,
+            seed_path="config/wallets_seed.yaml",
+            seed_size=2,
+            total_fetched=50,
+            total_excluded_existing=1,
+            total_excluded_min_volume=4,
+            total_candidates=45,
+        )
+
+    def test_frontmatter_contains_all_fields(self) -> None:
+        candidates = [self._candidate("a" * 40, "alice", "1000", "100")]
+        out = render_report_md(candidates, metadata=self._meta())
+        assert out.startswith("---\n")
+        assert "generated_at: 2026-05-04T20:30:00+00:00" in out
+        assert "time_period: MONTH" in out
+        assert "category: OVERALL" in out
+        assert "order_by: PNL" in out
+        assert "min_volume_usdc: 5000" in out
+        assert "top: 50" in out
+        assert "seed_path: config/wallets_seed.yaml" in out
+        assert "seed_size: 2" in out
+        assert "total_fetched: 50" in out
+        assert "total_excluded_existing: 1" in out
+        assert "total_excluded_min_volume: 4" in out
+        assert "total_candidates: 45" in out
+
+    def test_table_has_one_row_per_candidate_plus_header(self) -> None:
+        candidates = [
+            self._candidate("a" * 40, "alice", "1000", "100"),
+            self._candidate("b" * 40, "bob", "2000", "200"),
+        ]
+        out = render_report_md(candidates, metadata=self._meta())
+        body = out.split("|---")[1] if "|---" in out else out
+        rows = [line for line in body.splitlines() if line.startswith("|")]
+        assert len(rows) == 2
+
+    def test_pipes_in_label_escaped(self) -> None:
+        candidates = [self._candidate("a" * 40, "a|b|c", "1000", "100")]
+        out = render_report_md(candidates, metadata=self._meta())
+        assert "a\\|b\\|c" in out
+
+    def test_verified_renders_yes_or_no(self) -> None:
+        cands = [
+            self._candidate("a" * 40, "alice", "1000", "100", verified=True),
+            self._candidate("b" * 40, "bob", "1000", "100", verified=False),
+        ]
+        out = render_report_md(cands, metadata=self._meta())
+        assert "yes" in out
+        assert "no" in out
+
+    def test_empty_candidates_list(self) -> None:
+        out = render_report_md([], metadata=self._meta())
+        assert out.startswith("---\n")
+        assert "total_candidates: 45" in out
