@@ -292,3 +292,48 @@ def test_metrics_executor_expected_price_unavailable_counter() -> None:
     samples = list(registry.collect())
     matching = [m for m in samples if m.name == "polycopy_executor_expected_price_unavailable"]
     assert len(matching) == 1
+
+
+def test_metrics_hypothetical_pnl_total_gauge() -> None:
+    registry = CollectorRegistry()
+    metrics = make_metrics(registry=registry)
+    metrics.hypothetical_pnl_total_usdc.set(42.5)
+    samples = list(registry.collect())
+    matching = [m for m in samples if m.name == "polycopy_hypothetical_pnl_total_usdc"]
+    assert matching
+
+
+def test_metrics_hypothetical_pnl_24h_gauge() -> None:
+    registry = CollectorRegistry()
+    metrics = make_metrics(registry=registry)
+    metrics.hypothetical_pnl_24h_usdc.set(-12.3)
+    samples = list(registry.collect())
+    matching = [m for m in samples if m.name == "polycopy_hypothetical_pnl_24h_usdc"]
+    assert matching
+
+
+def test_metrics_hypothetical_winrate_gauge() -> None:
+    registry = CollectorRegistry()
+    metrics = make_metrics(registry=registry)
+    metrics.hypothetical_winrate.set(0.61)
+    samples = list(registry.collect())
+    matching = [m for m in samples if m.name == "polycopy_hypothetical_winrate"]
+    assert matching
+
+
+def test_metrics_hypothetical_trades_resolved_gauge() -> None:
+    registry = CollectorRegistry()
+    metrics = make_metrics(registry=registry)
+    metrics.hypothetical_trades_resolved.set(35)
+    samples = list(registry.collect())
+    matching = [m for m in samples if m.name == "polycopy_hypothetical_trades_resolved"]
+    assert matching
+
+
+def test_metrics_hypothetical_trades_pending_gauge() -> None:
+    registry = CollectorRegistry()
+    metrics = make_metrics(registry=registry)
+    metrics.hypothetical_trades_pending.set(7)
+    samples = list(registry.collect())
+    matching = [m for m in samples if m.name == "polycopy_hypothetical_trades_pending"]
+    assert matching

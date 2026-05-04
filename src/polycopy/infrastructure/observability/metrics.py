@@ -57,6 +57,13 @@ class Metrics:
     # Executor expected price (Plano 5B)
     executor_expected_price_unavailable_total: Counter
 
+    # Hypothetical PnL gauges (Plano 5C)
+    hypothetical_pnl_total_usdc: Gauge
+    hypothetical_pnl_24h_usdc: Gauge
+    hypothetical_winrate: Gauge
+    hypothetical_trades_resolved: Gauge
+    hypothetical_trades_pending: Gauge
+
 
 def make_metrics(registry: CollectorRegistry | None = None) -> Metrics:
     target = registry if registry is not None else REGISTRY
@@ -235,6 +242,31 @@ def make_metrics(registry: CollectorRegistry | None = None) -> Metrics:
             "polycopy_executor_expected_price_unavailable",
             "Trades onde expected_avg_price não pôde ser calculado.",
             labelnames=["reason"],
+            registry=target,
+        ),
+        hypothetical_pnl_total_usdc=Gauge(
+            "polycopy_hypothetical_pnl_total_usdc",
+            "PnL hipotético acumulado em USDC (todos os trades resolvidos).",
+            registry=target,
+        ),
+        hypothetical_pnl_24h_usdc=Gauge(
+            "polycopy_hypothetical_pnl_24h_usdc",
+            "PnL hipotético dos últimos 24h em USDC.",
+            registry=target,
+        ),
+        hypothetical_winrate=Gauge(
+            "polycopy_hypothetical_winrate",
+            "Taxa de vitória dos trades resolvidos (0..1, exclui invalid).",
+            registry=target,
+        ),
+        hypothetical_trades_resolved=Gauge(
+            "polycopy_hypothetical_trades_resolved",
+            "Quantidade de trades resolvidos (win+lose+invalid).",
+            registry=target,
+        ),
+        hypothetical_trades_pending=Gauge(
+            "polycopy_hypothetical_trades_pending",
+            "Quantidade de trades aguardando resolução de mercado.",
             registry=target,
         ),
     )

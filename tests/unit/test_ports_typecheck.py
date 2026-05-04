@@ -27,6 +27,7 @@ from polycopy.domain.events import (
 from polycopy.domain.execution import ExecutionResult, OrderExecution
 from polycopy.domain.market import Market, OrderBook
 from polycopy.domain.models import Side, Trade
+from polycopy.domain.pnl import PnlSummary
 from polycopy.domain.resolution import MarketResolution, ResolvedMarketDTO
 from polycopy.domain.risk import RiskDecision
 from polycopy.domain.sizing import OrderSizing
@@ -325,6 +326,15 @@ class _FakeMarketResolutionRepo:
 
     async def get_unresolved_condition_ids(self, *, limit: int) -> list[str]:
         return self.unresolved_to_return[:limit]
+
+    async def get_pnl_summary(self) -> PnlSummary:
+        return PnlSummary(
+            total_pnl_usdc=Decimal("0"),
+            pnl_24h_usdc=Decimal("0"),
+            winrate=0.0,
+            trades_resolved=0,
+            trades_pending=0,
+        )
 
 
 def _accepts_market_resolution_repo(_: MarketResolutionRepository) -> None:

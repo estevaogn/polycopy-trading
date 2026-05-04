@@ -143,6 +143,7 @@ class ResolverAgent(AgentBase):
                 self._metrics.resolver_sync_total.labels(result="ok").inc()
                 self._metrics.resolver_unresolved_pending.set(0)
                 self._log.info("resolver_sync_no_unresolved")
+                await self._compute_pnl_metrics()
                 return
 
             markets = await self._gamma.list_markets_by_condition_ids_closed(
@@ -176,6 +177,7 @@ class ResolverAgent(AgentBase):
                 no=outcomes_count["no"],
                 invalid=outcomes_count["invalid"],
             )
+            await self._compute_pnl_metrics()
         except Exception as exc:  # noqa: BLE001
             self._metrics.resolver_sync_total.labels(result="fail").inc()
             self._log.warning(
@@ -185,6 +187,23 @@ class ResolverAgent(AgentBase):
             )
         finally:
             self._metrics.resolver_sync_duration_seconds.observe(time.perf_counter() - start)
+
+    async def _compute_pnl_metrics(self) -> None:
+        """Recomputa e seta gauges Prometheus a partir da view hypothetical_pnl. Best-effort."""
+        try:
+            async with self._repo_factory() as repo:
+                summary = await repo.get_pnl_summary()
+            self._metrics.hypothetical_pnl_total_usdc.set(float(summary.total_pnl_usdc))
+            self._metrics.hypothetical_pnl_24h_usdc.set(float(summary.pnl_24h_usdc))
+            self._metrics.hypothetical_winrate.set(summary.winrate)
+            self._metrics.hypothetical_trades_resolved.set(summary.trades_resolved)
+            self._metrics.hypothetical_trades_pending.set(summary.trades_pending)
+        except Exception as exc:  # noqa: BLE001
+            self._log.warning(
+                "pnl_metrics_compute_failed",
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
 
 
 def _make_repo_factory(session_factory: async_sessionmaker[AsyncSession]) -> RepoFactory:

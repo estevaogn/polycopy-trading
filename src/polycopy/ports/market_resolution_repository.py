@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from polycopy.domain.pnl import PnlSummary
 from polycopy.domain.resolution import MarketResolution
 
 
@@ -25,4 +26,8 @@ class MarketResolutionRepository(Protocol):
         Query: LEFT JOIN wallet_trades vs market_resolutions
                 WHERE market_resolutions.condition_id IS NULL.
         """
+        ...
+
+    async def get_pnl_summary(self) -> PnlSummary:
+        """Snapshot agregado da view hypothetical_pnl. Pra métricas Prometheus."""
         ...
