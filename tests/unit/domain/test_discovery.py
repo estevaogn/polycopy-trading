@@ -289,3 +289,14 @@ class TestRenderCandidatesYaml:
         assert loaded[0].address.value == "0x" + "a" * 40
         assert loaded[0].label == "alice"
         assert loaded[1].label == "bob"
+
+    def test_roundtrip_label_with_quotes_and_backslash(self, tmp_path: Path) -> None:
+        candidates = [
+            self._candidate("a" * 40, 'al"i\\ce'),
+        ]
+        yaml_text = render_candidates_yaml(candidates)
+        path = tmp_path / "out.yaml"
+        path.write_text(yaml_text, encoding="utf-8")
+        loaded = load_wallets_seed(path)
+        assert len(loaded) == 1
+        assert loaded[0].label == 'al"i\\ce'
