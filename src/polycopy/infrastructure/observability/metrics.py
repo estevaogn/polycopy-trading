@@ -64,6 +64,10 @@ class Metrics:
     hypothetical_trades_resolved: Gauge
     hypothetical_trades_pending: Gauge
 
+    # Leaderboard discovery (Fase 6)
+    leaderboard_requests_total: Counter
+    leaderboard_request_duration_seconds: Histogram
+
 
 def make_metrics(registry: CollectorRegistry | None = None) -> Metrics:
     target = registry if registry is not None else REGISTRY
@@ -267,6 +271,18 @@ def make_metrics(registry: CollectorRegistry | None = None) -> Metrics:
         hypothetical_trades_pending=Gauge(
             "polycopy_hypothetical_trades_pending",
             "Quantidade de trades aguardando resolução de mercado.",
+            registry=target,
+        ),
+        leaderboard_requests_total=Counter(
+            "polycopy_leaderboard_requests",
+            "Total HTTP requests para Polymarket leaderboard endpoint.",
+            labelnames=["endpoint", "status"],
+            registry=target,
+        ),
+        leaderboard_request_duration_seconds=Histogram(
+            "polycopy_leaderboard_request_duration_seconds",
+            "Latência do endpoint /v1/leaderboard.",
+            labelnames=["endpoint"],
             registry=target,
         ),
     )
