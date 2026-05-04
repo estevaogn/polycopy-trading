@@ -226,3 +226,73 @@ class TestRunDiscover:
         assert len(leaderboard.calls) == 2
         assert leaderboard.calls[0]["offset"] == 0
         assert leaderboard.calls[1]["offset"] == 50
+
+    async def test_seed_path_not_found_exit_1(self, tmp_path: Path) -> None:
+        cands_out = tmp_path / "candidates.yaml"
+        report_out = tmp_path / "report.md"
+
+        leaderboard = FakeLeaderboard(pages=[])
+
+        args = DiscoverArgs(
+            time_period=TimePeriod.MONTH,
+            category=Category.OVERALL,
+            top=50,
+            min_volume_usdc=Decimal("0"),
+            seed_path=tmp_path / "does_not_exist.yaml",
+            candidates_out=cands_out,
+            report_out=report_out,
+            dry_run=False,
+        )
+        exit_code = await run_discover(args, leaderboard)
+        assert exit_code == 1
+        assert not cands_out.exists()
+        assert not report_out.exists()
+
+    async def test_api_failure_during_pagination_exit_1(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        seed_path = tmp_path / "seed.yaml"
+        seed_path.write_text(SEED_YAML, encoding="utf-8")
+        cands_out = tmp_path / "candidates.yaml"
+        report_out = tmp_path / "report.md"
+
+        import httpx
+
+        class RaisingLeaderboard:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            async def fetch_leaderboard(
+                self,
+                *,
+                time_period: TimePeriod,
+                category: Category,
+                order_by: OrderBy = OrderBy.PNL,
+                limit: int = 50,
+                offset: int = 0,
+            ) -> list[LeaderboardEntry]:
+                self.calls += 1
+                if self.calls == 1:
+                    return [_entry(f"{i:040x}", "10000", "100") for i in range(50)]
+                request = httpx.Request("GET", "https://example/v1/leaderboard")
+                response = httpx.Response(503, request=request, text="busy")
+                raise httpx.HTTPStatusError("server error", request=request, response=response)
+
+        args = DiscoverArgs(
+            time_period=TimePeriod.MONTH,
+            category=Category.OVERALL,
+            top=70,
+            min_volume_usdc=Decimal("0"),
+            seed_path=seed_path,
+            candidates_out=cands_out,
+            report_out=report_out,
+            dry_run=False,
+        )
+        exit_code = await run_discover(args, RaisingLeaderboard())  # type: ignore[arg-type]
+        assert exit_code == 1
+        assert not cands_out.exists()
+        assert not report_out.exists()
+        captured = capsys.readouterr()
+        assert "503" in captured.err or "server error" in captured.err.lower()

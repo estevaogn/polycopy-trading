@@ -29,6 +29,9 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
+import httpx
+import yaml
+
 from polycopy.domain.discovery import (
     CandidateWallet,
     Category,
@@ -103,23 +106,40 @@ async def run_discover(
     args: DiscoverArgs,
     leaderboard: PolymarketLeaderboardPort,
 ) -> int:
-    seed = load_wallets_seed(args.seed_path)
+    try:
+        seed = load_wallets_seed(args.seed_path)
+    except FileNotFoundError as exc:
+        print(f"error: seed file not found: {exc}", file=sys.stderr)
+        return 1
+    except (yaml.YAMLError, ValueError) as exc:
+        print(f"error: cannot parse seed file {args.seed_path}: {exc}", file=sys.stderr)
+        return 1
     seed_addrs: set[WalletAddress] = {w.address for w in seed}
 
     fetched: list[LeaderboardEntry] = []
     offset = 0
-    while len(fetched) < args.top and offset <= 1000:
-        page = await leaderboard.fetch_leaderboard(
-            time_period=args.time_period,
-            category=args.category,
-            order_by=OrderBy.PNL,
-            limit=PAGE_SIZE,
-            offset=offset,
+    try:
+        while len(fetched) < args.top and offset <= 1000:
+            page = await leaderboard.fetch_leaderboard(
+                time_period=args.time_period,
+                category=args.category,
+                order_by=OrderBy.PNL,
+                limit=PAGE_SIZE,
+                offset=offset,
+            )
+            fetched.extend(page)
+            if len(page) < PAGE_SIZE:
+                break
+            offset += PAGE_SIZE
+    except httpx.HTTPStatusError as exc:
+        print(
+            f"error: leaderboard API failed (HTTP {exc.response.status_code}): {exc}",
+            file=sys.stderr,
         )
-        fetched.extend(page)
-        if len(page) < PAGE_SIZE:
-            break
-        offset += PAGE_SIZE
+        return 1
+    except httpx.RequestError as exc:
+        print(f"error: network failure to leaderboard API: {exc}", file=sys.stderr)
+        return 1
 
     excluded_existing = sum(1 for e in fetched if e.address in seed_addrs)
     excluded_min_vol = sum(
