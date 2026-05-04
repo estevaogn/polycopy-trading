@@ -79,3 +79,43 @@ def derive_label(entry: LeaderboardEntry) -> str:
     if not printable:
         return f"{entry.address.value[:_FALLBACK_ADDR_PREFIX_CHARS]}…"
     return printable[:_LABEL_MAX_LEN]
+
+
+def filter_and_rank(
+    entries: list[LeaderboardEntry],
+    *,
+    min_volume_usdc: Decimal,
+    exclude: set[WalletAddress],
+    top_n: int,
+) -> list[CandidateWallet]:
+    """Filter, dedup, and convert entries to candidates.
+
+    - Drops entries whose address is in `exclude`.
+    - Drops entries whose `volume_usdc < min_volume_usdc`.
+    - Dedups by address (first occurrence wins).
+    - Preserves input order (caller should pass entries already sorted by PNL desc).
+    - Truncates result to `top_n`.
+    """
+    seen: set[WalletAddress] = set()
+    out: list[CandidateWallet] = []
+    for e in entries:
+        if e.address in exclude:
+            continue
+        if e.volume_usdc < min_volume_usdc:
+            continue
+        if e.address in seen:
+            continue
+        seen.add(e.address)
+        out.append(
+            CandidateWallet(
+                address=e.address,
+                label=derive_label(e),
+                rank=e.rank,
+                volume_usdc=e.volume_usdc,
+                pnl_usdc=e.pnl_usdc,
+                verified_badge=e.verified_badge,
+            )
+        )
+        if len(out) >= top_n:
+            break
+    return out
