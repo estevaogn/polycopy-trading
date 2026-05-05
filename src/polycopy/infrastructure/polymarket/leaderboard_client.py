@@ -92,6 +92,12 @@ class PolymarketLeaderboardClient:
                 status=str(exc.response.status_code),
             ).inc()
             raise
+        except httpx.RequestError:
+            self._metrics.leaderboard_requests_total.labels(
+                endpoint="leaderboard",
+                status="error",
+            ).inc()
+            raise
         finally:
             self._metrics.leaderboard_request_duration_seconds.labels(
                 endpoint="leaderboard",

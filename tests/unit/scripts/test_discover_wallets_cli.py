@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import json
 from decimal import Decimal
+from io import StringIO
 from pathlib import Path
 from typing import Any
 
 import pytest
+import structlog
 
+from polycopy.config import Environment, LogLevel
 from polycopy.domain.discovery import (
     Category,
     LeaderboardEntry,
@@ -13,6 +17,7 @@ from polycopy.domain.discovery import (
     TimePeriod,
 )
 from polycopy.domain.value_objects import WalletAddress
+from polycopy.infrastructure.observability.logging import configure_logging
 from polycopy.scripts.discover_wallets import (
     DiscoverArgs,
     parse_args,
@@ -296,3 +301,127 @@ class TestRunDiscover:
         assert not report_out.exists()
         captured = capsys.readouterr()
         assert "503" in captured.err or "server error" in captured.err.lower()
+
+
+class TestStructuredLogs:
+    """Spec §8.2: 4 events emitidos via structlog em json mode."""
+
+    @pytest.fixture
+    def log_buf(self) -> StringIO:
+        structlog.reset_defaults()
+        buf = StringIO()
+        configure_logging(env=Environment.PROD, level=LogLevel.INFO, stream=buf)
+        return buf
+
+    def _events(self, buf: StringIO) -> list[dict[str, Any]]:
+        return [json.loads(line) for line in buf.getvalue().splitlines() if line.strip()]
+
+    async def test_emits_all_four_events_on_happy_path(
+        self, tmp_path: Path, log_buf: StringIO
+    ) -> None:
+        seed_path = tmp_path / "seed.yaml"
+        seed_path.write_text(SEED_YAML, encoding="utf-8")
+        cands_out = tmp_path / "candidates.yaml"
+        report_out = tmp_path / "report.md"
+
+        leaderboard = FakeLeaderboard(
+            pages=[
+                [
+                    _entry("b" * 40, "10000", "500"),
+                    _entry("c" * 40, "10000", "400"),
+                ]
+            ]
+        )
+        args = DiscoverArgs(
+            time_period=TimePeriod.MONTH,
+            category=Category.OVERALL,
+            top=50,
+            min_volume_usdc=Decimal("5000"),
+            seed_path=seed_path,
+            candidates_out=cands_out,
+            report_out=report_out,
+            dry_run=False,
+        )
+        exit_code = await run_discover(args, leaderboard)
+        assert exit_code == 0
+
+        events = {e["event"]: e for e in self._events(log_buf)}
+
+        assert "discover_run_started" in events
+        started = events["discover_run_started"]
+        assert started["time_period"] == "MONTH"
+        assert started["category"] == "OVERALL"
+        assert started["top"] == 50
+        assert started["min_volume_usdc"] == "5000"
+        assert started["seed_size"] == 1
+
+        assert "leaderboard_page_fetched" in events
+        page = events["leaderboard_page_fetched"]
+        assert page["offset"] == 0
+        assert page["count"] == 2
+
+        assert "discover_run_filtered" in events
+        filtered = events["discover_run_filtered"]
+        assert filtered["total_fetched"] == 2
+        assert filtered["excluded_existing"] == 0
+        assert filtered["excluded_min_volume"] == 0
+        assert filtered["total_candidates"] == 2
+
+        assert "discover_run_completed" in events
+        completed = events["discover_run_completed"]
+        assert completed["dry_run"] is False
+        assert completed["candidates_path"].endswith("candidates.yaml")
+        assert completed["report_path"].endswith("report.md")
+
+    async def test_completed_event_signals_dry_run(self, tmp_path: Path, log_buf: StringIO) -> None:
+        seed_path = tmp_path / "seed.yaml"
+        seed_path.write_text(SEED_YAML, encoding="utf-8")
+        leaderboard = FakeLeaderboard(pages=[[_entry("b" * 40, "10000", "500")]])
+        args = DiscoverArgs(
+            time_period=TimePeriod.MONTH,
+            category=Category.OVERALL,
+            top=50,
+            min_volume_usdc=Decimal("0"),
+            seed_path=seed_path,
+            candidates_out=tmp_path / "candidates.yaml",
+            report_out=tmp_path / "report.md",
+            dry_run=True,
+        )
+        exit_code = await run_discover(args, leaderboard)
+        assert exit_code == 0
+
+        events = {e["event"]: e for e in self._events(log_buf)}
+        completed = events["discover_run_completed"]
+        assert completed["dry_run"] is True
+        assert "candidates_path" not in completed
+        assert "report_path" not in completed
+
+    async def test_emits_one_page_event_per_pagination_call(
+        self, tmp_path: Path, log_buf: StringIO
+    ) -> None:
+        seed_path = tmp_path / "seed.yaml"
+        seed_path.write_text("wallets: []\n", encoding="utf-8")
+
+        page0 = [_entry(f"{i:040x}", "10000", "100") for i in range(50)]
+        page1 = [_entry(f"{i:040x}", "10000", "100") for i in range(50, 75)]
+        leaderboard = FakeLeaderboard(pages=[page0, page1])
+
+        args = DiscoverArgs(
+            time_period=TimePeriod.MONTH,
+            category=Category.OVERALL,
+            top=70,
+            min_volume_usdc=Decimal("0"),
+            seed_path=seed_path,
+            candidates_out=tmp_path / "candidates.yaml",
+            report_out=tmp_path / "report.md",
+            dry_run=False,
+        )
+        exit_code = await run_discover(args, leaderboard)
+        assert exit_code == 0
+
+        page_events = [e for e in self._events(log_buf) if e["event"] == "leaderboard_page_fetched"]
+        assert len(page_events) == 2
+        assert page_events[0]["offset"] == 0
+        assert page_events[0]["count"] == 50
+        assert page_events[1]["offset"] == 50
+        assert page_events[1]["count"] == 25

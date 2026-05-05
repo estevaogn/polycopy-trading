@@ -44,8 +44,11 @@ from polycopy.domain.discovery import (
     render_report_md,
 )
 from polycopy.domain.value_objects import WalletAddress
+from polycopy.infrastructure.observability.logging import get_logger
 from polycopy.infrastructure.wallets_seed import load_wallets_seed
 from polycopy.ports.polymarket_leaderboard import PolymarketLeaderboardPort
+
+_log = get_logger(__name__)
 
 DEFAULT_SEED_PATH = Path("config/wallets_seed.yaml")
 DEFAULT_CANDIDATES_OUT = Path("config/wallets_candidates.yaml")
@@ -116,6 +119,15 @@ async def run_discover(
         return 1
     seed_addrs: set[WalletAddress] = {w.address for w in seed}
 
+    _log.info(
+        "discover_run_started",
+        time_period=args.time_period.value,
+        category=args.category.value,
+        top=args.top,
+        min_volume_usdc=str(args.min_volume_usdc),
+        seed_size=len(seed),
+    )
+
     fetched: list[LeaderboardEntry] = []
     offset = 0
     try:
@@ -127,6 +139,7 @@ async def run_discover(
                 limit=PAGE_SIZE,
                 offset=offset,
             )
+            _log.info("leaderboard_page_fetched", offset=offset, count=len(page))
             fetched.extend(page)
             if len(page) < PAGE_SIZE:
                 break
@@ -153,6 +166,14 @@ async def run_discover(
         top_n=args.top,
     )
 
+    _log.info(
+        "discover_run_filtered",
+        total_fetched=len(fetched),
+        excluded_existing=excluded_existing,
+        excluded_min_volume=excluded_min_vol,
+        total_candidates=len(candidates),
+    )
+
     if not candidates:
         if not fetched:
             print(
@@ -171,6 +192,7 @@ async def run_discover(
     _print_table(candidates)
 
     if args.dry_run:
+        _log.info("discover_run_completed", dry_run=True)
         return 0
 
     metadata = ReportMetadata(
@@ -195,6 +217,12 @@ async def run_discover(
     args.report_out.write_text(
         render_report_md(candidates, metadata=metadata),
         encoding="utf-8",
+    )
+    _log.info(
+        "discover_run_completed",
+        dry_run=False,
+        candidates_path=str(args.candidates_out),
+        report_path=str(args.report_out),
     )
     return 0
 
