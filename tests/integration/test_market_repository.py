@@ -91,6 +91,10 @@ async def test_get_market_fresh_versus_stale(
         )
         await session.commit()
 
+        # expire_on_commit=False (no factory) mantém row no identity map; sem
+        # expire_all() o select retorna o cache stale e ignora o UPDATE acima.
+        session.expire_all()
+
         cached2 = await repo.get_market(TokenId(value="200"))
         assert cached2 is not None
         assert cached2.is_stale is True
