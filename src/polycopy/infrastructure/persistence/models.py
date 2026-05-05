@@ -318,6 +318,19 @@ class DiscoveryRunRow(Base):
     __table_args__ = (Index("idx_discovery_runs_generated_at", "generated_at"),)
 
 
+class TrackedWalletRow(Base):
+    __tablename__ = "tracked_wallets"
+
+    address: Mapped[str] = mapped_column(String, primary_key=True)
+    label: Mapped[str] = mapped_column(String, nullable=False)
+    added_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    last_synced_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class NotifierConfigRow(Base):
     __tablename__ = "notifier_config"
 

@@ -13,6 +13,7 @@ from polycopy.ports.polymarket_data import PolymarketDataPort
 from polycopy.ports.polymarket_gamma import PolymarketGammaPort
 from polycopy.ports.repository import WalletTradeRepository
 from polycopy.ports.risk_decision_repository import RiskDecisionRepository
+from polycopy.ports.tracked_wallet_repository import TrackedWalletRepository
 
 __all__ = [
     "CachedMarket",
@@ -28,5 +29,6 @@ __all__ = [
     "PolymarketDataPort",
     "PolymarketGammaPort",
     "RiskDecisionRepository",
+    "TrackedWalletRepository",
     "WalletTradeRepository",
 ]
