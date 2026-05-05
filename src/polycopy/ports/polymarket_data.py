@@ -17,9 +17,11 @@ class PolymarketDataPort(Protocol):
         wallet: WalletAddress,
         since: datetime | None = None,
         limit: int = 100,
+        offset: int = 0,
     ) -> list[Trade]:
         """Retorna trades da wallet, ordenados por `occurred_at` desc.
 
         Se `since` for passado, retorna apenas trades com `occurred_at > since`.
+        `offset` permite paginação (Polymarket limita ~1000 por chamada).
         """
         ...
