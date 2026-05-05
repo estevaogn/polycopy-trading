@@ -65,6 +65,11 @@ class Metrics:
     hypothetical_trades_resolved: Gauge
     hypothetical_trades_pending: Gauge
 
+    # Hypothetical analytics (Plano 5C v3 — métricas analíticas)
+    hypothetical_sharpe: Gauge
+    hypothetical_max_drawdown_usdc: Gauge
+    hypothetical_avg_holding_hours: Gauge
+
     # Leaderboard discovery (Fase 6)
     leaderboard_requests_total: Counter
     leaderboard_request_duration_seconds: Histogram
@@ -278,6 +283,21 @@ def make_metrics(registry: CollectorRegistry | None = None) -> Metrics:
         hypothetical_trades_pending=Gauge(
             "polycopy_hypothetical_trades_pending",
             "Quantidade de trades aguardando resolução de mercado.",
+            registry=target,
+        ),
+        hypothetical_sharpe=Gauge(
+            "polycopy_hypothetical_sharpe",
+            "Sharpe ratio dos trades resolvidos (avg/stddev de pnl/size). NaN se <2 trades.",
+            registry=target,
+        ),
+        hypothetical_max_drawdown_usdc=Gauge(
+            "polycopy_hypothetical_max_drawdown_usdc",
+            "Maior queda peak-to-trough no PnL cumulativo (USDC, sempre >= 0).",
+            registry=target,
+        ),
+        hypothetical_avg_holding_hours=Gauge(
+            "polycopy_hypothetical_avg_holding_hours",
+            "Média de horas entre decisão e resolução de mercado, sobre trades resolvidos.",
             registry=target,
         ),
         leaderboard_requests_total=Counter(

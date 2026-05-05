@@ -10,6 +10,7 @@ import pytest
 
 from polycopy.scripts.backtest import (
     Trade,
+    _compute_analytics,
     _format_json,
     _format_table,
     _parse_since,
@@ -22,7 +23,9 @@ def _trade(
     side: str = "BUY",
     pnl: Decimal | None = Decimal("5"),
     wallet: str = "0xabc",
+    resolved_at: datetime | None = None,
 ) -> Trade:
+    decided = datetime(2026, 5, 5, 12, 0, tzinfo=UTC)
     return Trade(
         trade_event_id="00000000-0000-0000-0000-000000000001",
         wallet=wallet,
@@ -31,7 +34,8 @@ def _trade(
         side=side,
         final_size_usdc=Decimal("10"),
         expected_avg_price=Decimal("0.5"),
-        decided_at=datetime.now(tz=UTC),
+        decided_at=decided,
+        resolved_at=resolved_at if resolved_at is not None else decided + timedelta(hours=4),
         resolved_outcome="YES",
         pnl_usdc=pnl,
         status=status,
@@ -113,3 +117,37 @@ def test_format_json_handles_null_pnl() -> None:
     out = _format_json(trades, since=timedelta(days=7), by="none")
     parsed = json.loads(out)
     assert parsed[0]["pnl_usdc"] is None
+
+
+def test_compute_analytics_returns_none_with_fewer_than_two_resolved() -> None:
+    """Sharpe needs >= 2 resolved trades; max_dd e avg_holding também precisam de dados."""
+    trades = [_trade(status="pending", pnl=None)]
+    a = _compute_analytics(trades)
+    assert a.sharpe is None
+    assert a.max_drawdown_usdc == Decimal(0)
+    assert a.avg_holding_hours is None
+
+
+def test_compute_analytics_computes_sharpe_dd_holding() -> None:
+    """Cenário: 4 trades resolvidos com PnLs +5, -2, +3, -1 (size=10 cada) ordenados no tempo."""
+    base = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
+    trades = [
+        _trade(status="win", pnl=Decimal("5"), resolved_at=base + timedelta(hours=2)),
+        _trade(status="lose", pnl=Decimal("-2"), resolved_at=base + timedelta(hours=4)),
+        _trade(status="win", pnl=Decimal("3"), resolved_at=base + timedelta(hours=6)),
+        _trade(status="lose", pnl=Decimal("-1"), resolved_at=base + timedelta(hours=8)),
+    ]
+    # decided_at no _trade é 2026-05-05 12:00; resolved_at varia → holding negativo no factory
+    # Forçar decided_at < resolved_at via override
+    trades = [
+        Trade(**{**t.__dict__, "decided_at": t.resolved_at - timedelta(hours=2)})  # type: ignore[operator,arg-type]
+        for t in trades
+    ]
+    a = _compute_analytics(trades)
+    # Returns: 0.5, -0.2, 0.3, -0.1; mean=0.125, stdev~0.32 (>0)
+    assert a.sharpe is not None
+    assert 0.3 < a.sharpe < 0.5
+    # Cum: +5, +3, +6, +5. Peak: 5,5,6,6. DD: 0,2,0,1. Max=2.
+    assert a.max_drawdown_usdc == Decimal("2")
+    # Holding: 2h cada → avg=2.0
+    assert a.avg_holding_hours == 2.0
