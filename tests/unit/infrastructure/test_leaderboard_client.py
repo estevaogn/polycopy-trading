@@ -154,3 +154,23 @@ async def test_rank_string_or_int_both_parsed() -> None:
     )
     assert rows[0].rank == 1
     assert rows[1].rank == 2
+
+
+@pytest.mark.asyncio
+async def test_request_error_increments_counter_with_error_status() -> None:
+    """Network failures (DNS/Connect) também devem aparecer no counter."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused")
+
+    client = _client(httpx.MockTransport(handler))
+    with pytest.raises(httpx.RequestError):
+        await client.fetch_leaderboard(
+            time_period=TimePeriod.WEEK,
+            category=Category.OVERALL,
+        )
+    counter = client._metrics.leaderboard_requests_total.labels(
+        endpoint="leaderboard",
+        status="error",
+    )
+    assert counter._value.get() == 1

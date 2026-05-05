@@ -150,3 +150,43 @@ async def test_fetch_user_activity_skips_rows_with_empty_asset(metrics: object) 
         metrics.polymarket_rows_skipped_total.labels(reason="empty_asset")._value.get()  # type: ignore[attr-defined]
         == 1
     )
+
+
+@respx.mock
+async def test_http_status_error_increments_counter_with_status_code(metrics: object) -> None:
+    """Hoje só o success path incrementa o counter; 5xx persistente também deve aparecer."""
+    respx.get(f"{_BASE}/activity").mock(return_value=httpx.Response(503))
+    client = PolymarketDataClient(
+        base_url=_BASE,
+        metrics=metrics,  # type: ignore[arg-type]
+        timeout_s=5,
+        max_retries=2,
+    )
+    with pytest.raises(httpx.HTTPStatusError):
+        await client.fetch_user_activity(WalletAddress(value=_VALID_ADDR))
+    assert (
+        metrics.polymarket_requests_total.labels(  # type: ignore[attr-defined]
+            endpoint="activity", status="503"
+        )._value.get()
+        == 1
+    )
+
+
+@respx.mock
+async def test_request_error_increments_counter_with_error_status(metrics: object) -> None:
+    """Network failures (DNS/Connect) também devem aparecer no counter."""
+    respx.get(f"{_BASE}/activity").mock(side_effect=httpx.ConnectError("connection refused"))
+    client = PolymarketDataClient(
+        base_url=_BASE,
+        metrics=metrics,  # type: ignore[arg-type]
+        timeout_s=5,
+        max_retries=2,
+    )
+    with pytest.raises(httpx.RequestError):
+        await client.fetch_user_activity(WalletAddress(value=_VALID_ADDR))
+    assert (
+        metrics.polymarket_requests_total.labels(  # type: ignore[attr-defined]
+            endpoint="activity", status="error"
+        )._value.get()
+        == 1
+    )

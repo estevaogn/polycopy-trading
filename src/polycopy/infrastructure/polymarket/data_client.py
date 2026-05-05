@@ -72,6 +72,18 @@ class PolymarketDataClient:
         start = time.perf_counter()
         try:
             response = await self._with_retry(_do)
+        except httpx.HTTPStatusError as exc:
+            self._metrics.polymarket_requests_total.labels(
+                endpoint="activity",
+                status=str(exc.response.status_code),
+            ).inc()
+            raise
+        except httpx.RequestError:
+            self._metrics.polymarket_requests_total.labels(
+                endpoint="activity",
+                status="error",
+            ).inc()
+            raise
         finally:
             self._metrics.polymarket_request_duration_seconds.labels(endpoint="activity").observe(
                 time.perf_counter() - start
