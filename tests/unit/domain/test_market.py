@@ -41,20 +41,37 @@ class TestMarket:
         assert m.token_id.value == "42"
         assert m.is_active is True
 
-    def test_outcome_must_be_yes_or_no(self) -> None:
+    def test_outcome_must_be_non_empty(self) -> None:
+        """Após PR #21: aceitamos qualquer string non-empty (sport teams, multi-option)."""
         with pytest.raises(ValidationError):
             Market(
                 token_id=TokenId(value="42"),
                 condition_id=ConditionId(value="0x" + "ab" * 32),
                 question="?",
                 slug=None,
-                outcome="Maybe",
+                outcome="",
                 end_date=None,
                 is_active=True,
                 is_archived=False,
                 volume_24h_usdc=None,
                 liquidity_usdc=None,
             )
+
+    def test_outcome_accepts_non_binary(self) -> None:
+        """Sport teams, multi-option markets têm outcomes nominais."""
+        m = Market(
+            token_id=TokenId(value="42"),
+            condition_id=ConditionId(value="0x" + "ab" * 32),
+            question="Phillies vs Marlins",
+            slug=None,
+            outcome="Philadelphia Phillies",
+            end_date=None,
+            is_active=True,
+            is_archived=False,
+            volume_24h_usdc=None,
+            liquidity_usdc=None,
+        )
+        assert m.outcome == "Philadelphia Phillies"
 
     def test_immutable(self) -> None:
         m = _market()
