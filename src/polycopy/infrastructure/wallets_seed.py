@@ -52,6 +52,8 @@ def load_wallets_seed(path: Path) -> list[TrackedWallet]:
         raise ValueError(f"'wallets' must be a list; got {type(raw).__name__}")
 
     wallets: list[TrackedWallet] = []
+    seen_addrs: dict[str, int] = {}  # lowercase address → first-seen index
+    seen_labels: dict[str, int] = {}  # label → first-seen index
     for i, item in enumerate(raw):
         if not isinstance(item, dict):
             raise ValueError(f"wallet[{i}] must be a mapping; got {type(item).__name__}")
@@ -63,6 +65,19 @@ def load_wallets_seed(path: Path) -> list[TrackedWallet]:
         label = str(item["label"]).strip()
         if not label:
             raise ValueError(f"wallet[{i}] 'label' must be non-empty")
+
+        # Deteção de duplicatas — falha loud em vez de carregar silenciosamente.
+        if addr.value in seen_addrs:
+            first = seen_addrs[addr.value]
+            raise ValueError(
+                f"wallet[{i}] address {addr.value} duplicada (já visto em wallet[{first}])"
+            )
+        if label in seen_labels:
+            first = seen_labels[label]
+            raise ValueError(f"wallet[{i}] label {label!r} duplicada (já visto em wallet[{first}])")
+
+        seen_addrs[addr.value] = i
+        seen_labels[label] = i
         wallets.append(TrackedWallet(address=addr, label=label))
 
     return wallets

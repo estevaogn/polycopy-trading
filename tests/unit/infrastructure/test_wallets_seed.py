@@ -87,3 +87,26 @@ def test_load_missing_wallets_key_raises(tmp_path: Path) -> None:
     path = _write(tmp_path / "w.yaml", "other: value\n")
     with pytest.raises(ValueError, match="wallets"):
         load_wallets_seed(path)
+
+
+def test_load_duplicate_address_raises(tmp_path: Path) -> None:
+    addr = "0x" + "a" * 40
+    yaml_body = (
+        f'wallets:\n  - address: "{addr}"\n    label: "alice"\n'
+        f'  - address: "{addr.upper()}"\n    label: "bob"\n'
+    )
+    path = _write(tmp_path / "w.yaml", yaml_body)
+    with pytest.raises(ValueError, match="duplicada"):
+        load_wallets_seed(path)
+
+
+def test_load_duplicate_label_raises(tmp_path: Path) -> None:
+    a1 = "0x" + "a" * 40
+    a2 = "0x" + "b" * 40
+    yaml_body = (
+        f'wallets:\n  - address: "{a1}"\n    label: "alice"\n'
+        f'  - address: "{a2}"\n    label: "alice"\n'
+    )
+    path = _write(tmp_path / "w.yaml", yaml_body)
+    with pytest.raises(ValueError, match="label.*duplicada"):
+        load_wallets_seed(path)
