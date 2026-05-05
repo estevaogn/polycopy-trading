@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from io import StringIO
 
 import pytest
@@ -16,7 +17,9 @@ from polycopy.infrastructure.observability.logging import (
 
 
 @pytest.fixture(autouse=True)
-def _reset_structlog() -> None:
+def _reset_structlog() -> Iterator[None]:
+    structlog.reset_defaults()
+    yield
     structlog.reset_defaults()
 
 
