@@ -4,9 +4,25 @@
   "tags": ["polycopy"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
   "time": { "from": "now-30d", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "wallet",
+        "type": "query",
+        "label": "Wallet",
+        "datasource": { "type": "postgres", "uid": "postgres" },
+        "query": "SELECT label || ' (0x' || substr(address, 3, 6) || '…)' AS __text, address AS __value FROM tracked_wallets ORDER BY label",
+        "current": { "selected": false, "text": "", "value": "" },
+        "refresh": 1,
+        "includeAll": false,
+        "multi": false,
+        "sort": 1
+      }
+    ]
+  },
   "panels": [
     {
       "id": 1,
@@ -123,7 +139,7 @@
       "type": "table",
       "title": "Performance por wallet",
       "datasource": { "type": "postgres", "uid": "postgres" },
-      "gridPos": { "h": 12, "w": 12, "x": 0, "y": 19 },
+      "gridPos": { "h": 12, "w": 8, "x": 0, "y": 19 },
       "targets": [
         {
           "refId": "A",
@@ -160,7 +176,7 @@
       "type": "table",
       "title": "Wallets candidates (último run de discover_wallets)",
       "datasource": { "type": "postgres", "uid": "postgres" },
-      "gridPos": { "h": 12, "w": 12, "x": 12, "y": 19 },
+      "gridPos": { "h": 12, "w": 8, "x": 16, "y": 19 },
       "targets": [
         {
           "refId": "A",
@@ -191,6 +207,190 @@
           },
           {
             "matcher": { "id": "byName", "options": "Label" },
+            "properties": [{ "id": "custom.align", "value": "left" }]
+          }
+        ]
+      }
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Wallets monitoradas (do wallets_seed.yaml)",
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "gridPos": { "h": 12, "w": 8, "x": 8, "y": 19 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT tw.label AS \"Label\", tw.address AS \"Address\", COALESCE(s.trades, 0) AS \"Trades\", COALESCE(s.pending, 0) AS \"Pending\", ROUND(COALESCE(s.pnl_total, 0)::numeric, 2) AS \"PnL USDC\" FROM tracked_wallets tw LEFT JOIN (SELECT wallet, COUNT(*) AS trades, COUNT(*) FILTER (WHERE status='pending') AS pending, SUM(pnl_usdc) AS pnl_total FROM hypothetical_pnl GROUP BY wallet) s ON s.wallet = tw.address ORDER BY \"PnL USDC\" DESC NULLS LAST;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "right" }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Label" },
+            "properties": [
+              { "id": "custom.align", "value": "left" },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Selecionar esta wallet (drill-down)",
+                    "url": "/d/polycopy-main/polycopy-e28094-hypothetical-pnl?var-wallet=${__data.fields.Address}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Address" },
+            "properties": [
+              { "id": "custom.align", "value": "left" },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Abrir perfil Polymarket",
+                    "url": "https://polymarket.com/profile/${__value.raw}",
+                    "targetBlank": true
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "PnL 24h — $wallet",
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 31 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT ROUND(COALESCE(SUM(pnl_usdc), 0)::numeric, 2) AS \"PnL\" FROM hypothetical_pnl WHERE wallet = '${wallet}' AND status IN ('win','lose','invalid') AND decided_at > now() - interval '24 hours';"
+        }
+      ],
+      "options": { "colorMode": "value", "graphMode": "none", "textMode": "value_and_name" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 0 }]
+          },
+          "unit": "currencyUSD"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "stat",
+      "title": "PnL 7d — $wallet",
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 31 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT ROUND(COALESCE(SUM(pnl_usdc), 0)::numeric, 2) AS \"PnL\" FROM hypothetical_pnl WHERE wallet = '${wallet}' AND status IN ('win','lose','invalid') AND decided_at > now() - interval '7 days';"
+        }
+      ],
+      "options": { "colorMode": "value", "graphMode": "none", "textMode": "value_and_name" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 0 }]
+          },
+          "unit": "currencyUSD"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "PnL 30d — $wallet",
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 31 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT ROUND(COALESCE(SUM(pnl_usdc), 0)::numeric, 2) AS \"PnL\" FROM hypothetical_pnl WHERE wallet = '${wallet}' AND status IN ('win','lose','invalid') AND decided_at > now() - interval '30 days';"
+        }
+      ],
+      "options": { "colorMode": "value", "graphMode": "none", "textMode": "value_and_name" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 0 }]
+          },
+          "unit": "currencyUSD"
+        }
+      }
+    },
+    {
+      "id": 12,
+      "type": "stat",
+      "title": "Trades pendentes — $wallet",
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 31 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT COUNT(*)::int AS \"Pendentes\" FROM hypothetical_pnl WHERE wallet = '${wallet}' AND status = 'pending';"
+        }
+      ],
+      "options": { "colorMode": "value", "graphMode": "none", "textMode": "value_and_name" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] }
+        }
+      }
+    },
+    {
+      "id": 11,
+      "type": "table",
+      "title": "Ordens pendentes — $wallet",
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 37 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT decided_at AS \"Decidido\", side AS \"Side\", ROUND(final_size_usdc::numeric, 2) AS \"Size USDC\", ROUND(expected_avg_price::numeric, 4) AS \"Expected px\", condition_id AS \"Condition\", token_id AS \"Token\" FROM hypothetical_pnl WHERE wallet = '${wallet}' AND status = 'pending' ORDER BY decided_at DESC;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "right" } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Decidido" },
+            "properties": [{ "id": "custom.align", "value": "left" }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Side" },
+            "properties": [{ "id": "custom.align", "value": "center" }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Condition" },
+            "properties": [{ "id": "custom.align", "value": "left" }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Token" },
             "properties": [{ "id": "custom.align", "value": "left" }]
           }
         ]

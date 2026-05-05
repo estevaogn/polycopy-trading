@@ -145,6 +145,32 @@ def _load_wallets(settings: Settings) -> list[TrackedWallet]:
     return [TrackedWallet(address=w.address, label=w.label) for w in seed]
 
 
+async def _sync_tracked_wallets(
+    session_factory: async_sessionmaker[AsyncSession],
+    wallets: list[TrackedWallet],
+) -> None:
+    """Espelha seed em DB pra dashboard. Best-effort: erros logam e seguem."""
+    from polycopy.infrastructure.observability.logging import get_logger
+    from polycopy.infrastructure.persistence.tracked_wallet_repository import (
+        SqlAlchemyTrackedWalletRepository,
+    )
+
+    log = get_logger("watcher.sync_tracked_wallets")
+    try:
+        async with session_factory() as session:
+            repo = SqlAlchemyTrackedWalletRepository(session)
+            for w in wallets:
+                await repo.upsert(address=w.address.value, label=w.label)
+            await session.commit()
+        log.info("tracked_wallets_synced", count=len(wallets))
+    except Exception as exc:  # noqa: BLE001
+        log.warning(
+            "tracked_wallets_sync_failed",
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
+
+
 def _make_repo_factory(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> RepoFactory:
@@ -197,6 +223,10 @@ async def main() -> None:
     engine = make_engine(settings)
     session_factory = make_session_factory(engine)
     repo_factory = _make_repo_factory(session_factory)
+
+    # Sincroniza seed YAML pra tabela tracked_wallets (espelho pro dashboard).
+    # Best-effort: erros aqui não bloqueiam o startup do watcher.
+    await _sync_tracked_wallets(session_factory, wallets)
 
     bus = NatsMessagingBus(url=settings.nats_url)
     await bus.connect()
