@@ -4,7 +4,7 @@
   "tags": ["polycopy"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 3,
+  "version": 4,
   "refresh": "30s",
   "time": { "from": "now-30d", "to": "now" },
   "templating": {
@@ -400,6 +400,7 @@
       "id": 13,
       "type": "stat",
       "title": "PnL realizado 24h — $wallet (real wallet)",
+      "description": "Soma de pnl_usdc dos trades resolvidos da wallet nesta janela. Fica $0.00 enquanto nenhum mercado da wallet resolveu (caso atual: wallets fazem apostas em eventos futuros — Copa 2026, eleições, etc.). Vai popular conforme mercados fecharem.",
       "datasource": { "type": "postgres", "uid": "postgres" },
       "gridPos": { "h": 6, "w": 6, "x": 0, "y": 47 },
       "targets": [
@@ -425,6 +426,7 @@
       "id": 14,
       "type": "stat",
       "title": "PnL realizado 7d — $wallet (real wallet)",
+      "description": "Soma de pnl_usdc dos trades resolvidos da wallet nesta janela. Fica $0.00 enquanto nenhum mercado da wallet resolveu (caso atual: wallets fazem apostas em eventos futuros).",
       "datasource": { "type": "postgres", "uid": "postgres" },
       "gridPos": { "h": 6, "w": 6, "x": 6, "y": 47 },
       "targets": [
@@ -450,6 +452,7 @@
       "id": 15,
       "type": "stat",
       "title": "PnL realizado 30d — $wallet (real wallet)",
+      "description": "Soma de pnl_usdc dos trades resolvidos da wallet nesta janela. Fica $0.00 enquanto nenhum mercado da wallet resolveu.",
       "datasource": { "type": "postgres", "uid": "postgres" },
       "gridPos": { "h": 6, "w": 6, "x": 12, "y": 47 },
       "targets": [
@@ -475,6 +478,7 @@
       "id": 16,
       "type": "stat",
       "title": "PnL realizado all-time — $wallet (real wallet)",
+      "description": "Soma de pnl_usdc all-time. Fica $0.00 enquanto nenhum mercado da wallet resolveu (resolver checa 100/h via Gamma; ver dashboard do resolver pra progresso).",
       "datasource": { "type": "postgres", "uid": "postgres" },
       "gridPos": { "h": 6, "w": 6, "x": 18, "y": 47 },
       "targets": [
@@ -500,21 +504,38 @@
       "id": 17,
       "type": "table",
       "title": "Posições abertas — $wallet (mercados ainda não resolvidos)",
+      "description": "JOIN com tabela markets pra trazer descrição (question) + slug. MarketdataAgent sincroniza só top-N mercados ativos, então ~58% dos conditions ficam sem descrição (mostra o condition_id truncado como fallback). Coluna Slug é clicável e abre o mercado na Polymarket.",
       "datasource": { "type": "postgres", "uid": "postgres" },
-      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 53 },
+      "gridPos": { "h": 14, "w": 24, "x": 0, "y": 53 },
       "targets": [
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT condition_id AS \"Condition\", token_id AS \"Token\", ROUND(net_qty::numeric, 4) AS \"Qty\", ROUND(net_cost_usdc::numeric, 2) AS \"Custo USDC\", first_trade_at AS \"Primeiro\", last_trade_at AS \"Último\" FROM wallet_open_positions WHERE wallet = '${wallet}' ORDER BY net_cost_usdc DESC;"
+          "rawSql": "SELECT COALESCE(MAX(m.question), '— condition ' || left(p.condition_id, 12) || '…') AS \"Mercado\", MAX(m.slug) AS \"Slug\", p.token_id AS \"Token\", ROUND(p.net_qty::numeric, 4) AS \"Qty\", ROUND(p.net_cost_usdc::numeric, 2) AS \"Custo USDC\", p.first_trade_at AS \"Primeiro\", p.last_trade_at AS \"Último\" FROM wallet_open_positions p LEFT JOIN markets m ON m.condition_id = p.condition_id WHERE p.wallet = '${wallet}' GROUP BY p.condition_id, p.token_id, p.net_qty, p.net_cost_usdc, p.first_trade_at, p.last_trade_at ORDER BY p.net_cost_usdc DESC;"
         }
       ],
       "fieldConfig": {
         "defaults": { "custom": { "align": "right" } },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "Condition" },
+            "matcher": { "id": "byName", "options": "Mercado" },
             "properties": [{ "id": "custom.align", "value": "left" }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Slug" },
+            "properties": [
+              { "id": "custom.align", "value": "left" },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Abrir mercado na Polymarket",
+                    "url": "https://polymarket.com/market/${__value.raw}",
+                    "targetBlank": true
+                  }
+                ]
+              }
+            ]
           },
           {
             "matcher": { "id": "byName", "options": "Token" },
