@@ -1,0 +1,168 @@
+{
+  "uid": "polycopy-main",
+  "title": "Polycopy — Hypothetical PnL",
+  "tags": ["polycopy"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-30d", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "table",
+      "title": "Resumo por janela (carteira hipotética)",
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "gridPos": { "h": 9, "w": 18, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "WITH r AS (SELECT pnl_usdc, status, decided_at FROM hypothetical_pnl WHERE status IN ('win','lose','invalid') AND pnl_usdc IS NOT NULL), windows(label, ord, since) AS (VALUES ('24h',1,interval '24 hours'),('7d',2,interval '7 days'),('14d',3,interval '14 days'),('30d',4,interval '30 days'),('60d',5,interval '60 days'),('365d',6,interval '365 days')) SELECT w.label AS \"Janela\", COUNT(*) FILTER (WHERE r.decided_at > now() - w.since) AS \"Trades\", COUNT(*) FILTER (WHERE r.status = 'win' AND r.decided_at > now() - w.since) AS \"Wins\", COUNT(*) FILTER (WHERE r.status = 'lose' AND r.decided_at > now() - w.since) AS \"Losses\", ROUND(COALESCE(SUM(r.pnl_usdc) FILTER (WHERE r.decided_at > now() - w.since), 0)::numeric, 2) AS \"PnL USDC\", ROUND(100.0 * COUNT(*) FILTER (WHERE r.status='win' AND r.decided_at > now() - w.since) / NULLIF(COUNT(*) FILTER (WHERE r.status IN ('win','lose') AND r.decided_at > now() - w.since), 0), 1) AS \"Winrate %\" FROM windows w LEFT JOIN r ON true GROUP BY w.label, w.ord ORDER BY w.ord;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "right" }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Janela" },
+            "properties": [{ "id": "custom.align", "value": "left" }]
+          }
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Ordens pendentes",
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "gridPos": { "h": 9, "w": 6, "x": 18, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT COUNT(*)::int AS \"Pendentes\" FROM hypothetical_pnl WHERE status = 'pending';"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "PnL cumulativo (ordenado por resolved_at)",
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 9 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT resolved_at AS \"time\", SUM(pnl_usdc) OVER (ORDER BY resolved_at, trade_event_id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)::float AS \"Cumulativo USDC\" FROM hypothetical_pnl WHERE status IN ('win','lose','invalid') AND pnl_usdc IS NOT NULL ORDER BY resolved_at;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "stepAfter",
+            "fillOpacity": 10
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Performance por wallet",
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "gridPos": { "h": 12, "w": 12, "x": 0, "y": 19 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT wallet AS \"Wallet\", COUNT(*) AS \"Trades\", COUNT(*) FILTER (WHERE status = 'win') AS \"Wins\", COUNT(*) FILTER (WHERE status = 'lose') AS \"Losses\", ROUND(SUM(pnl_usdc)::numeric, 2) AS \"PnL USDC\", ROUND(100.0 * COUNT(*) FILTER (WHERE status='win') / NULLIF(COUNT(*) FILTER (WHERE status IN ('win','lose')), 0), 1) AS \"Winrate %\" FROM hypothetical_pnl WHERE status IN ('win','lose','invalid') GROUP BY wallet ORDER BY \"PnL USDC\" DESC NULLS LAST;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "right" }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Wallet" },
+            "properties": [
+              { "id": "custom.align", "value": "left" },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Abrir perfil Polymarket",
+                    "url": "https://polymarket.com/profile/${__value.raw}",
+                    "targetBlank": true
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Wallets candidates (último run de discover_wallets)",
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "gridPos": { "h": 12, "w": 12, "x": 12, "y": 19 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT c.rank AS \"#\", c.address AS \"Address\", c.label AS \"Label\", ROUND(c.volume_usdc::numeric, 2) AS \"Volume USDC\", ROUND(c.pnl_usdc::numeric, 2) AS \"PnL USDC\", c.verified_badge AS \"Verified\" FROM discovery_candidates c WHERE c.run_id = (SELECT id FROM discovery_runs ORDER BY generated_at DESC LIMIT 1) ORDER BY c.rank;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "right" }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Address" },
+            "properties": [
+              { "id": "custom.align", "value": "left" },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Abrir perfil Polymarket",
+                    "url": "https://polymarket.com/profile/${__value.raw}",
+                    "targetBlank": true
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Label" },
+            "properties": [{ "id": "custom.align", "value": "left" }]
+          }
+        ]
+      }
+    }
+  ]
+}
