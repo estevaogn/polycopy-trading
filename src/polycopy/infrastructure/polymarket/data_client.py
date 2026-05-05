@@ -82,8 +82,26 @@ class PolymarketDataClient:
         ).inc()
 
         # Polymarket Data API retorna array direto (não envelopado em {"data": ...}).
+        # Polymarket ocasionalmente devolve posições com IDs vazios (positions stale/closed
+        # ou estado parcial). Filtramos antes de construir Trade pra não derrubar a request
+        # inteira da wallet.
         rows = response.json()
-        return [self._row_to_trade(row) for row in rows]
+        trades: list[Trade] = []
+        for row in rows:
+            reason = self._malformed_reason(row)
+            if reason is not None:
+                self._metrics.polymarket_rows_skipped_total.labels(reason=reason).inc()
+                continue
+            trades.append(self._row_to_trade(row))
+        return trades
+
+    @staticmethod
+    def _malformed_reason(row: dict[str, Any]) -> str | None:
+        if not row.get("conditionId"):
+            return "empty_condition_id"
+        if not row.get("asset"):
+            return "empty_asset"
+        return None
 
     async def _with_retry(self, fn: Callable[[], Awaitable[httpx.Response]]) -> httpx.Response:
         async for attempt in AsyncRetrying(

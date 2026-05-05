@@ -15,6 +15,7 @@ from prometheus_client import REGISTRY, CollectorRegistry, Counter, Gauge, Histo
 class Metrics:
     polymarket_requests_total: Counter
     polymarket_request_duration_seconds: Histogram
+    polymarket_rows_skipped_total: Counter
 
     # Gamma + CLOB (Plano 2A)
     polymarket_http_request_duration_seconds: Histogram
@@ -82,6 +83,12 @@ def make_metrics(registry: CollectorRegistry | None = None) -> Metrics:
             "polycopy_polymarket_request_duration_seconds",
             "Latência de requests pra Polymarket Data API",
             labelnames=["endpoint"],
+            registry=target,
+        ),
+        polymarket_rows_skipped_total=Counter(
+            "polycopy_polymarket_rows_skipped",
+            "Trades rows da Polymarket Data API descartados por payload malformado.",
+            labelnames=["reason"],
             registry=target,
         ),
         polymarket_http_request_duration_seconds=Histogram(
