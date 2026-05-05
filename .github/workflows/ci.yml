@@ -44,3 +44,77 @@ jobs:
 
       - name: Pytest (unit + smoke)
         run: uv run pytest tests/unit tests/test_smoke.py --cov=src/polycopy --cov-report=term
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.7"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Setup .env for compose
+        run: |
+          cat > .env <<'EOF'
+          ENV=dev
+          LOG_LEVEL=INFO
+          POSTGRES_USER=polycopy
+          POSTGRES_PASSWORD=ci_test_password
+          POSTGRES_DB=polycopy
+          POSTGRES_PORT=5432
+          PROMETHEUS_PORT=9090
+          TELEGRAM_BOT_TOKEN=ci_dummy
+          TELEGRAM_CHAT_ID=0
+          EOF
+
+      - name: Start infra services (postgres, nats, redis)
+        run: docker compose up -d postgres nats redis
+
+      - name: Wait for services healthy
+        run: |
+          for i in {1..60}; do
+            healthy=$(docker compose ps --services --filter health=healthy 2>/dev/null | wc -l)
+            if [ "$healthy" -ge 3 ]; then
+              echo "all 3 infra services healthy"
+              docker compose ps
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "services not healthy within timeout"
+          docker compose ps
+          docker compose logs --tail 50
+          exit 1
+
+      - name: Pytest (integration, no e2e)
+        env:
+          POSTGRES_USER: polycopy
+          POSTGRES_PASSWORD: ci_test_password
+          POSTGRES_DB: polycopy
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          NATS_URL: nats://localhost:4222
+          REDIS_URL: redis://localhost:6379/0
+          ENV: dev
+          LOG_LEVEL: INFO
+          TELEGRAM_BOT_TOKEN: ci_dummy
+          TELEGRAM_CHAT_ID: "0"
+        run: |
+          uv run pytest tests/integration \
+            --ignore-glob='**/test_*_e2e.py' \
+            --tb=short
+
+      - name: Compose teardown
+        if: always()
+        run: docker compose down -v
