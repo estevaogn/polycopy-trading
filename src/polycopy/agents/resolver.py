@@ -198,6 +198,14 @@ class ResolverAgent(AgentBase):
             self._metrics.hypothetical_winrate.set(summary.winrate)
             self._metrics.hypothetical_trades_resolved.set(summary.trades_resolved)
             self._metrics.hypothetical_trades_pending.set(summary.trades_pending)
+            # NaN sinaliza "indisponível" pra Prometheus (gauge sem valor sensato).
+            self._metrics.hypothetical_sharpe.set(
+                summary.sharpe if summary.sharpe is not None else float("nan")
+            )
+            self._metrics.hypothetical_max_drawdown_usdc.set(float(summary.max_drawdown_usdc))
+            self._metrics.hypothetical_avg_holding_hours.set(
+                summary.avg_holding_hours if summary.avg_holding_hours is not None else float("nan")
+            )
         except Exception as exc:  # noqa: BLE001
             self._log.warning(
                 "pnl_metrics_compute_failed",

@@ -192,3 +192,84 @@ async def test_adapter_satisfies_protocol(
     """Mypy garante que SqlAlchemyMarketResolutionRepository satisfaz Protocol."""
     async with db_session_factory() as session:
         _: MarketResolutionRepository = SqlAlchemyMarketResolutionRepository(session)
+
+
+async def _seed_resolved_execution(
+    session: AsyncSession,
+    *,
+    condition_id: str,
+    token_id: str,
+    side: str,
+    final_size_usdc: str,
+    expected_avg_price: str,
+    decided_at: datetime,
+    resolved_at: datetime,
+    winning_token_id: str | None,
+    resolved_outcome: str = "YES",
+) -> None:
+    """Insere order_execution + market_resolution pra alimentar a view hypothetical_pnl."""
+    await session.execute(
+        text(
+            "INSERT INTO order_executions "
+            "(trade_event_id, wallet, condition_id, token_id, side, "
+            " final_size_usdc, mode, result, decided_at, expected_avg_price) "
+            "VALUES (:tid, :w, :c, :t, :side, :size, 'dry_run', 'dry_run', "
+            "        :decided, :exp)"
+        ),
+        {
+            "tid": uuid.uuid4(),
+            "w": _VALID_WALLET,
+            "c": condition_id,
+            "t": token_id,
+            "side": side,
+            "size": final_size_usdc,
+            "exp": expected_avg_price,
+            "decided": decided_at,
+        },
+    )
+    await session.execute(
+        text(
+            "INSERT INTO market_resolutions "
+            "(condition_id, resolved_outcome, winning_token_id, "
+            " resolved_at, outcome_prices_raw) "
+            'VALUES (:c, :o, :w, :ra, \'["1","0"]\')'
+        ),
+        {"c": condition_id, "o": resolved_outcome, "w": winning_token_id, "ra": resolved_at},
+    )
+
+
+async def test_get_pnl_summary_populates_analytics_fields(
+    db_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Sharpe, max_drawdown e avg_holding_hours são calculados na agregação."""
+    from datetime import timedelta
+    from decimal import Decimal
+
+    base = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
+    async with db_session_factory() as session:
+        # 4 BUYs alternando win/lose @ price=0.5 size=10 → pnls +10, -10, +10, -10.
+        # Cum: +10, 0, +10, 0. Peak: 10, 10, 10, 10. DD: 0, 10, 0, 10 → max_dd=10.
+        # Returns: +1.0, -1.0, +1.0, -1.0 → variance > 0 → sharpe não-None.
+        # Holding: 4h cada trade.
+        for i, win in enumerate([True, False, True, False]):
+            cond = _unique_cond()
+            await _seed_resolved_execution(
+                session,
+                condition_id=cond,
+                token_id="111",
+                side="BUY",
+                final_size_usdc="10",
+                expected_avg_price="0.5",
+                decided_at=base + timedelta(hours=2 * i),
+                resolved_at=base + timedelta(hours=2 * i + 4),
+                winning_token_id="111" if win else "222",
+            )
+        await session.commit()
+
+        repo = SqlAlchemyMarketResolutionRepository(session)
+        summary = await repo.get_pnl_summary()
+
+        assert summary.trades_resolved == 4
+        assert summary.sharpe is not None  # variance > 0
+        assert summary.max_drawdown_usdc == Decimal("10")
+        assert summary.avg_holding_hours == 4.0

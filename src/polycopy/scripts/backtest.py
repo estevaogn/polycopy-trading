@@ -15,6 +15,7 @@ import argparse
 import asyncio
 import json
 import re
+import statistics
 import sys
 from collections import defaultdict
 from dataclasses import dataclass
@@ -40,6 +41,7 @@ class Trade:
     final_size_usdc: Decimal
     expected_avg_price: Decimal | None
     decided_at: datetime
+    resolved_at: datetime | None
     resolved_outcome: str | None
     pnl_usdc: Decimal | None
     status: str
@@ -70,7 +72,7 @@ async def _query_trades(*, since: timedelta) -> list[Trade]:
             text(
                 """
                 SELECT trade_event_id, wallet, condition_id, token_id, side,
-                       final_size_usdc, expected_avg_price, decided_at,
+                       final_size_usdc, expected_avg_price, decided_at, resolved_at,
                        resolved_outcome, pnl_usdc, status
                 FROM hypothetical_pnl
                 WHERE decided_at > :cutoff
@@ -92,12 +94,65 @@ async def _query_trades(*, since: timedelta) -> list[Trade]:
             final_size_usdc=r.final_size_usdc,
             expected_avg_price=r.expected_avg_price,
             decided_at=r.decided_at,
+            resolved_at=r.resolved_at,
             resolved_outcome=r.resolved_outcome,
             pnl_usdc=r.pnl_usdc,
             status=r.status,
         )
         for r in rows
     ]
+
+
+@dataclass(frozen=True)
+class _Analytics:
+    sharpe: float | None
+    max_drawdown_usdc: Decimal
+    avg_holding_hours: float | None
+
+
+def _compute_analytics(trades: list[Trade]) -> _Analytics:
+    """Computa Sharpe, max drawdown e avg holding sobre trades resolvidos.
+
+    Sharpe: mean/stdev de returns (pnl/size). None se <2 trades ou stdev=0.
+    Max DD: maior queda peak-to-trough do PnL cumulativo, ordem resolved_at.
+    Avg holding: média de (resolved_at - decided_at) em horas.
+    """
+    resolved = [
+        t for t in trades if t.status in ("win", "lose", "invalid") and t.pnl_usdc is not None
+    ]
+
+    sharpe: float | None = None
+    if len(resolved) >= 2:
+        returns = [
+            float(t.pnl_usdc / t.final_size_usdc)
+            for t in resolved
+            if t.pnl_usdc is not None and t.final_size_usdc > 0
+        ]
+        if len(returns) >= 2:
+            stdev = statistics.stdev(returns)
+            if stdev > 0:
+                sharpe = statistics.mean(returns) / stdev
+
+    max_dd = Decimal(0)
+    sorted_by_time = sorted(
+        (t for t in resolved if t.resolved_at is not None),
+        key=lambda t: (t.resolved_at, t.trade_event_id),
+    )
+    cum = Decimal(0)
+    peak = Decimal(0)
+    for t in sorted_by_time:
+        cum += t.pnl_usdc  # type: ignore[operator]
+        peak = max(peak, cum)
+        max_dd = max(max_dd, peak - cum)
+
+    holdings = [
+        (t.resolved_at - t.decided_at).total_seconds() / 3600.0
+        for t in resolved
+        if t.resolved_at is not None
+    ]
+    avg_holding = sum(holdings) / len(holdings) if holdings else None
+
+    return _Analytics(sharpe=sharpe, max_drawdown_usdc=max_dd, avg_holding_hours=avg_holding)
 
 
 def _format_table(trades: list[Trade], *, since: timedelta, by: str) -> str:
@@ -118,6 +173,10 @@ def _format_table(trades: list[Trade], *, since: timedelta, by: str) -> str:
     decided = win_count + lose_count
     winrate = (win_count / decided * 100) if decided > 0 else 0.0
 
+    a = _compute_analytics(trades)
+    sharpe_str = f"{a.sharpe:+.3f}" if a.sharpe is not None else "N/A"
+    hold_str = f"{a.avg_holding_hours:.1f}h" if a.avg_holding_hours is not None else "N/A"
+
     lines = [
         "=== Backtest Summary ===",
         f"Period:        últimos {since}",
@@ -131,6 +190,9 @@ def _format_table(trades: list[Trade], *, since: timedelta, by: str) -> str:
         "",
         f"PnL hipotético:  ${total_pnl:+.2f} USDC",
         f"Winrate:         {winrate:.1f}% ({win_count} / {decided} resolved excluindo invalid)",
+        f"Sharpe:          {sharpe_str}",
+        f"Max drawdown:    ${a.max_drawdown_usdc:.2f} USDC",
+        f"Avg holding:     {hold_str}",
         "",
     ]
 
