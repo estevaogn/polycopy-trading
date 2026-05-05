@@ -239,37 +239,42 @@ async def _seed_resolved_execution(
 
 
 async def test_get_pnl_summary_populates_analytics_fields(
-    db_session_factory: async_sessionmaker[AsyncSession],
+    db_session: AsyncSession,
 ) -> None:
-    """Sharpe, max_drawdown e avg_holding_hours são calculados na agregação."""
+    """Sharpe, max_drawdown e avg_holding_hours são calculados na agregação.
+
+    Usa db_session (rollback) pra isolar — TRUNCATE antes garante view limpa,
+    independente do que outros testes deixaram em order_executions.
+    """
     from datetime import timedelta
     from decimal import Decimal
 
+    # Limpa tudo dentro da transação — rollback no teardown restaura.
+    await db_session.execute(text("TRUNCATE order_executions, market_resolutions CASCADE"))
+
     base = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
-    async with db_session_factory() as session:
-        # 4 BUYs alternando win/lose @ price=0.5 size=10 → pnls +10, -10, +10, -10.
-        # Cum: +10, 0, +10, 0. Peak: 10, 10, 10, 10. DD: 0, 10, 0, 10 → max_dd=10.
-        # Returns: +1.0, -1.0, +1.0, -1.0 → variance > 0 → sharpe não-None.
-        # Holding: 4h cada trade.
-        for i, win in enumerate([True, False, True, False]):
-            cond = _unique_cond()
-            await _seed_resolved_execution(
-                session,
-                condition_id=cond,
-                token_id="111",
-                side="BUY",
-                final_size_usdc="10",
-                expected_avg_price="0.5",
-                decided_at=base + timedelta(hours=2 * i),
-                resolved_at=base + timedelta(hours=2 * i + 4),
-                winning_token_id="111" if win else "222",
-            )
-        await session.commit()
+    # 4 BUYs alternando win/lose @ price=0.5 size=10 → pnls +10, -10, +10, -10.
+    # Cum: +10, 0, +10, 0. Peak: 10, 10, 10, 10. DD: 0, 10, 0, 10 → max_dd=10.
+    # Returns: +1.0, -1.0, +1.0, -1.0 → variance > 0 → sharpe não-None.
+    # Holding: 4h cada.
+    for i, win in enumerate([True, False, True, False]):
+        cond = _unique_cond()
+        await _seed_resolved_execution(
+            db_session,
+            condition_id=cond,
+            token_id="111",
+            side="BUY",
+            final_size_usdc="10",
+            expected_avg_price="0.5",
+            decided_at=base + timedelta(hours=2 * i),
+            resolved_at=base + timedelta(hours=2 * i + 4),
+            winning_token_id="111" if win else "222",
+        )
 
-        repo = SqlAlchemyMarketResolutionRepository(session)
-        summary = await repo.get_pnl_summary()
+    repo = SqlAlchemyMarketResolutionRepository(db_session)
+    summary = await repo.get_pnl_summary()
 
-        assert summary.trades_resolved == 4
-        assert summary.sharpe is not None  # variance > 0
-        assert summary.max_drawdown_usdc == Decimal("10")
-        assert summary.avg_holding_hours == 4.0
+    assert summary.trades_resolved == 4
+    assert summary.sharpe is not None  # variance > 0
+    assert summary.max_drawdown_usdc == Decimal("10")
+    assert summary.avg_holding_hours == 4.0
