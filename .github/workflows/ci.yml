@@ -83,11 +83,13 @@ jobs:
 
       - name: Wait for services healthy
         run: |
-          for i in {1..60}; do
-            healthy=$(docker compose ps --services --filter health=healthy 2>/dev/null | wc -l)
-            if [ "$healthy" -ge 3 ]; then
+          for i in {1..90}; do
+            pg=$(docker inspect --format='{{.State.Health.Status}}' polycopy-postgres 2>/dev/null || echo "missing")
+            nats=$(docker inspect --format='{{.State.Health.Status}}' polycopy-nats 2>/dev/null || echo "missing")
+            redis=$(docker inspect --format='{{.State.Health.Status}}' polycopy-redis 2>/dev/null || echo "missing")
+            echo "[$i] postgres=$pg nats=$nats redis=$redis"
+            if [ "$pg" = "healthy" ] && [ "$nats" = "healthy" ] && [ "$redis" = "healthy" ]; then
               echo "all 3 infra services healthy"
-              docker compose ps
               exit 0
             fi
             sleep 2
