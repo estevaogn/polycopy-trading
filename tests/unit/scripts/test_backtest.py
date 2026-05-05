@@ -75,7 +75,7 @@ def test_format_table_mixed_outcomes() -> None:
         _trade(status="lose", pnl=Decimal("-10")),
         _trade(status="invalid", pnl=Decimal("-2")),
         _trade(status="pending", pnl=None),
-        _trade(status="sell_excluded", pnl=None),
+        _trade(status="no_expected_price", pnl=None),
     ]
     out = _format_table(trades, since=timedelta(days=7), by="none")
     assert "Trades total:  5" in out
@@ -83,7 +83,7 @@ def test_format_table_mixed_outcomes() -> None:
     assert "lose 1" in out
     assert "invalid 1" in out
     assert "Pending:    1" in out
-    assert "sell 1" in out
+    assert "no_price 1" in out
     assert "50.0%" in out  # 1 win / 2 decided
 
 

@@ -126,10 +126,8 @@ def _format_table(trades: list[Trade], *, since: timedelta, by: str) -> str:
         f"{by_status.get('win', 0) + by_status.get('lose', 0) + by_status.get('invalid', 0)} "
         f"(win {win_count}, lose {lose_count}, invalid {by_status.get('invalid', 0)})",
         f"  - Pending:    {by_status.get('pending', 0)}",
-        f"  - Excluded:   "
-        f"{by_status.get('sell_excluded', 0) + by_status.get('no_expected_price', 0)} "
-        f"(sell {by_status.get('sell_excluded', 0)}, "
-        f"no_price {by_status.get('no_expected_price', 0)})",
+        f"  - Excluded:   {by_status.get('no_expected_price', 0)} "
+        f"(no_price {by_status.get('no_expected_price', 0)})",
         "",
         f"PnL hipotético:  ${total_pnl:+.2f} USDC",
         f"Winrate:         {winrate:.1f}% ({win_count} / {decided} resolved excluindo invalid)",

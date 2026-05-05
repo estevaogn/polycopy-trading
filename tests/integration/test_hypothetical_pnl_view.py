@@ -223,10 +223,10 @@ async def test_view_null_expected_price_yields_no_expected_price_status(
         assert row.qty_tokens is None
 
 
-async def test_view_sell_excluded_from_v1(
+async def test_view_sell_winning_token_yields_negative_pnl(
     db_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    """SELL: pnl NULL, status sell_excluded."""
+    """SELL token vencedor: pnl = size - qty*1 (negativo). Vendemos o que valorizou."""
     async with db_session_factory() as session:
         cond = _unique_cond()
         tid = uuid.uuid4()
@@ -237,7 +237,7 @@ async def test_view_sell_excluded_from_v1(
             token_id="111",
             side="SELL",
             final_size_usdc="10",
-            expected_avg_price="0.5",
+            expected_avg_price="0.4",
         )
         await _insert_resolution(
             session,
@@ -248,9 +248,72 @@ async def test_view_sell_excluded_from_v1(
         await session.commit()
 
         row = await _query_pnl(session, tid)
-        assert row.status == "sell_excluded"
-        assert row.pnl_usdc is None
-        assert row.payout_per_token is None
+        assert row.status == "lose"
+        # qty = 10/0.4 = 25; pnl = 10 - 25*1 = -15
+        assert row.pnl_usdc == Decimal("-15")
+        assert row.qty_tokens == Decimal("25")
+        assert row.payout_per_token == Decimal("1")
+
+
+async def test_view_sell_losing_token_yields_positive_size(
+    db_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """SELL token perdedor: pnl = +size. Vendemos algo que virou pó."""
+    async with db_session_factory() as session:
+        cond = _unique_cond()
+        tid = uuid.uuid4()
+        await _insert_execution(
+            session,
+            trade_event_id=tid,
+            condition_id=cond,
+            token_id="111",
+            side="SELL",
+            final_size_usdc="10",
+            expected_avg_price="0.4",
+        )
+        await _insert_resolution(
+            session,
+            condition_id=cond,
+            resolved_outcome="YES",
+            winning_token_id="999",  # token_id != trade
+        )
+        await session.commit()
+
+        row = await _query_pnl(session, tid)
+        assert row.status == "win"
+        # qty = 25; pnl = 10 - 25*0 = +10
+        assert row.pnl_usdc == Decimal("10")
+        assert row.payout_per_token == Decimal("0")
+
+
+async def test_view_sell_invalid_resolution_pays_half(
+    db_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """SELL INVALID: status='invalid' regardless de sinal do pnl; pnl reflete payout 0.5."""
+    async with db_session_factory() as session:
+        cond = _unique_cond()
+        tid = uuid.uuid4()
+        await _insert_execution(
+            session,
+            trade_event_id=tid,
+            condition_id=cond,
+            token_id="111",
+            side="SELL",
+            final_size_usdc="10",
+            expected_avg_price="0.4",
+        )
+        await _insert_resolution(
+            session,
+            condition_id=cond,
+            resolved_outcome="INVALID",
+            winning_token_id=None,
+        )
+        await session.commit()
+
+        row = await _query_pnl(session, tid)
+        assert row.status == "invalid"
+        # qty = 25; pnl = 10 - 25*0.5 = -2.5 (preço baixo + INVALID = SELL perde economicamente)
+        assert row.pnl_usdc == Decimal("-2.5")
 
 
 async def test_view_zero_expected_price_treated_as_null(
@@ -327,14 +390,15 @@ async def test_view_multiple_trades_same_condition(
 async def test_view_status_enum_completeness(
     db_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    """Confere que todos os 5 status aparecem corretamente em runs separados."""
+    """Confere que todos os status aparecem corretamente em runs separados (BUY + SELL)."""
     async with db_session_factory() as session:
         scenarios = [
             ("BUY", "111", "0.5", "YES", "111", "win"),
             ("BUY", "111", "0.5", "YES", "222", "lose"),
             ("BUY", "111", "0.4", "INVALID", None, "invalid"),
             ("BUY", "111", "0.5", None, None, "pending"),
-            ("SELL", "111", "0.5", "YES", "111", "sell_excluded"),
+            ("SELL", "111", "0.4", "YES", "222", "win"),
+            ("SELL", "111", "0.4", "YES", "111", "lose"),
         ]
         tids = []
         for side, token, exp, outcome, winner, _ in scenarios:
@@ -364,7 +428,7 @@ async def test_view_status_enum_completeness(
             row = await _query_pnl(session, tid)
             statuses.append(row.status)
 
-        assert statuses == ["win", "lose", "invalid", "pending", "sell_excluded"]
+        assert statuses == ["win", "lose", "invalid", "pending", "win", "lose"]
 
 
 async def test_view_no_resolution_match_yields_pending(
