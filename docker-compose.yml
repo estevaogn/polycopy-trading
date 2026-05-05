@@ -76,6 +76,8 @@ services:
         AGENT_MODULE: watcher
     image: polycopy/watcher:dev
     container_name: polycopy-watcher
+    volumes:
+      - ./config:/app/config:ro
     restart: unless-stopped
     labels:
       com.polycopy.role: agent
@@ -116,6 +118,8 @@ services:
         AGENT_MODULE: notifier
     image: polycopy/notifier:dev
     container_name: polycopy-notifier
+    volumes:
+      - ./config:/app/config:ro
     restart: unless-stopped
     labels:
       com.polycopy.role: agent
@@ -155,6 +159,8 @@ services:
         AGENT_MODULE: marketdata
     image: polycopy/marketdata:dev
     container_name: polycopy-marketdata
+    volumes:
+      - ./config:/app/config:ro
     restart: unless-stopped
     labels:
       com.polycopy.role: agent
@@ -196,6 +202,8 @@ services:
         AGENT_MODULE: risk
     image: polycopy/risk:dev
     container_name: polycopy-risk
+    volumes:
+      - ./config:/app/config:ro
     restart: unless-stopped
     labels:
       com.polycopy.role: agent
@@ -242,6 +250,8 @@ services:
         AGENT_MODULE: sizing
     image: polycopy/sizing:dev
     container_name: polycopy-sizing
+    volumes:
+      - ./config:/app/config:ro
     restart: unless-stopped
     labels:
       com.polycopy.role: agent
@@ -283,6 +293,8 @@ services:
         AGENT_MODULE: executor
     image: polycopy/executor:dev
     container_name: polycopy-executor
+    volumes:
+      - ./config:/app/config:ro
     restart: unless-stopped
     labels:
       com.polycopy.role: agent
@@ -322,6 +334,8 @@ services:
         AGENT_MODULE: resolver
     image: polycopy/resolver:dev
     container_name: polycopy-resolver
+    volumes:
+      - ./config:/app/config:ro
     restart: unless-stopped
     labels:
       com.polycopy.role: agent
