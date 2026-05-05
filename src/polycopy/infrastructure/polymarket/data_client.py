@@ -58,8 +58,9 @@ class PolymarketDataClient:
         wallet: WalletAddress,
         since: datetime | None = None,
         limit: int = 100,
+        offset: int = 0,
     ) -> list[Trade]:
-        params: dict[str, Any] = {"user": wallet.value, "limit": limit}
+        params: dict[str, Any] = {"user": wallet.value, "limit": limit, "offset": offset}
         if since is not None:
             params["start"] = int(since.timestamp())
 

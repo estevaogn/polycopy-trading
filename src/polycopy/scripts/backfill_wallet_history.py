@@ -29,28 +29,52 @@ async def _backfill_one(
     *,
     wallet_address: str,
     since: datetime,
-    limit: int,
+    page_size: int,
+    max_pages: int,
     client: object,  # PolymarketDataClient — protocolo cumprido
     session_factory: object,
-) -> tuple[int, int]:
-    """Backfill 1 wallet usando client/session_factory já criados. Retorna (fetched, inserted)."""
+) -> tuple[int, int, int, str | None]:
+    """Backfill 1 wallet paginando offset. Retorna (fetched, inserted, pages, hit_cap_msg)."""
+    import httpx
+
     from polycopy.domain.value_objects import WalletAddress
     from polycopy.infrastructure.persistence.wallet_trade_repository import (
         SqlAlchemyWalletTradeRepository,
     )
 
     addr = WalletAddress(value=wallet_address)
-    trades = await client.fetch_user_activity(addr, since=since, limit=limit)  # type: ignore[attr-defined]
-    fetched = len(trades)
-
+    fetched = 0
     inserted = 0
+    pages = 0
+    hit_cap: str | None = None
     async with session_factory() as session:  # type: ignore[operator]
         repo = SqlAlchemyWalletTradeRepository(session)
-        for trade in trades:
-            if await repo.insert_if_absent(trade):
-                inserted += 1
+        offset = 0
+        while pages < max_pages:
+            try:
+                trades = await client.fetch_user_activity(  # type: ignore[attr-defined]
+                    addr, since=since, limit=page_size, offset=offset
+                )
+            except httpx.HTTPStatusError as exc:
+                # Polymarket retorna 400 quando offset excede limite interno (~3500).
+                # Commitamos o que já pegamos e seguimos.
+                if exc.response.status_code == 400:
+                    hit_cap = f"API offset cap em offset={offset} (HTTP 400)"
+                    break
+                raise
+            page_fetched = len(trades)
+            if page_fetched == 0:
+                break
+            for trade in trades:
+                if await repo.insert_if_absent(trade):
+                    inserted += 1
+            fetched += page_fetched
+            pages += 1
+            if page_fetched < page_size:
+                break  # última página
+            offset += page_size
         await session.commit()
-    return fetched, inserted
+    return fetched, inserted, pages, hit_cap
 
 
 async def _load_all_tracked_wallets() -> list[str]:
@@ -106,10 +130,16 @@ async def _async_main(argv: list[str] | None = None) -> int:
         help="Quantos dias pra trás buscar (default 365).",
     )
     parser.add_argument(
-        "--limit",
+        "--page-size",
         type=int,
-        default=1000,
-        help="Limit por chamada à API. Se atingido, log avisa.",
+        default=500,
+        help="Trades por página (Polymarket capa ~1000). Default 500.",
+    )
+    parser.add_argument(
+        "--max-pages",
+        type=int,
+        default=20,
+        help="Máximo de páginas por wallet (safety vs loops infinitos). Default 20 = ~10k trades.",
     )
     ns = parser.parse_args(argv)
 
@@ -122,7 +152,10 @@ async def _async_main(argv: list[str] | None = None) -> int:
         wallets = ns.wallet
 
     since = datetime.now(tz=UTC) - timedelta(days=ns.since_days)
-    print(f"backfilling {len(wallets)} wallet(s) desde {since.isoformat()} (limit={ns.limit})")
+    print(
+        f"backfilling {len(wallets)} wallet(s) desde {since.isoformat()} "
+        f"(page_size={ns.page_size} max_pages={ns.max_pages})"
+    )
 
     settings = Settings()
     engine = make_engine(settings)
@@ -140,10 +173,11 @@ async def _async_main(argv: list[str] | None = None) -> int:
         total_inserted = 0
         for i, addr in enumerate(wallets, 1):
             try:
-                fetched, inserted = await _backfill_one(
+                fetched, inserted, pages, hit_cap = await _backfill_one(
                     wallet_address=addr,
                     since=since,
-                    limit=ns.limit,
+                    page_size=ns.page_size,
+                    max_pages=ns.max_pages,
                     client=client,
                     session_factory=session_factory,
                 )
@@ -155,8 +189,15 @@ async def _async_main(argv: list[str] | None = None) -> int:
                 continue
             total_fetched += fetched
             total_inserted += inserted
-            warn = " (limit atingido — pode ter mais histórico)" if fetched >= ns.limit else ""
-            print(f"[{i}/{len(wallets)}] {addr}: fetched={fetched} inserted={inserted}{warn}")
+            warn = ""
+            if hit_cap is not None:
+                warn = f" ({hit_cap})"
+            elif pages >= ns.max_pages:
+                warn = " (max_pages atingido — pode ter mais histórico)"
+            print(
+                f"[{i}/{len(wallets)}] {addr}: fetched={fetched} inserted={inserted} "
+                f"pages={pages}{warn}"
+            )
 
         print(f"done. total_fetched={total_fetched} total_inserted={total_inserted}")
         return 0
