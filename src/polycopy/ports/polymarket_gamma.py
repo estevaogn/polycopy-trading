@@ -37,3 +37,14 @@ class PolymarketGammaPort(Protocol):
         necessários pra classificação no ResolverAgent.
         """
         ...
+
+    async def list_markets_by_condition_ids(
+        self, *, condition_ids: list[str], limit: int
+    ) -> list[Market]:
+        """Lista markets por condition_ids sem filtro `closed`/`active`.
+
+        Útil pra backfill de metadata: cobre mercados fora do top-N que
+        wallets monitoradas operaram. Retorna Markets prontos pra upsert
+        em `markets` table.
+        """
+        ...

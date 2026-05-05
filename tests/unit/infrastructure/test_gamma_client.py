@@ -208,11 +208,15 @@ async def test_list_markets_by_condition_ids_closed_passes_correct_params() -> N
         condition_ids=["0x" + "ab" * 32, "0x" + "cd" * 32], limit=50
     )
 
-    assert len(captured) == 1
-    params = dict(captured[0].url.params)
-    assert params["closed"] == "true"
-    assert "condition_ids" in params
-    assert params["limit"] == "50"
+    # Gamma não suporta batch confiável (vide gamma_client). Cliente itera 1-by-1.
+    # 2 condition_ids → 2 requests com `condition_ids=<single>` cada.
+    assert len(captured) == 2
+    sent_ids = [r.url.params["condition_ids"] for r in captured]
+    assert sorted(sent_ids) == sorted(["0x" + "ab" * 32, "0x" + "cd" * 32])
+    for r in captured:
+        params = r.url.params
+        assert params["closed"] == "true"
+        assert params["limit"] == "50"
 
 
 @respx.mock

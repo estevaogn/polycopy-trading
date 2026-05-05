@@ -66,19 +66,21 @@ class PolymarketGammaClient:
     async def list_markets_by_condition_ids_closed(
         self, *, condition_ids: list[str], limit: int
     ) -> list[ResolvedMarketDTO]:
-        """Lista markets fechados por condition_ids. Implementação completa no Plano 5A."""
-        rows = await self._fetch_markets(
-            params={
-                "closed": "true",
-                "condition_ids": ",".join(condition_ids),
-                "limit": limit,
-            }
-        )
+        """Lista markets fechados por condition_ids.
+
+        Gamma API NÃO suporta batch confiável: comma-separated com 2+ IDs
+        retorna []; array notation `[]=` é ignorado. Workaround: iteramos
+        1-by-1. ~100ms por call. Para resolver (100/cycle) = ~10s.
+        """
         out: list[ResolvedMarketDTO] = []
-        for row in rows:
-            dto = self._row_to_resolved_market_dto(row)
-            if dto is not None:
-                out.append(dto)
+        for cond in condition_ids:
+            rows = await self._fetch_markets(
+                params={"closed": "true", "condition_ids": cond, "limit": limit}
+            )
+            for row in rows:
+                dto = self._row_to_resolved_market_dto(row)
+                if dto is not None:
+                    out.append(dto)
         return out
 
     async def list_active_markets(self, *, limit: int) -> list[Market]:
@@ -95,6 +97,29 @@ class PolymarketGammaClient:
         out: list[Market] = []
         for row in rows:
             out.extend(self._row_to_markets(row))
+        return out
+
+    async def list_markets_by_condition_ids(
+        self, *, condition_ids: list[str], limit: int
+    ) -> list[Market]:
+        """Lista markets por condition_ids em qualquer estado (open ou closed).
+
+        Gamma só aceita `closed=true|false`; default filtra closed=false.
+        Pra cobrir ambos estados, fazemos 2 queries por condition_id.
+        Itera 1-by-1 porque batch é instável (vide nota da outra method).
+        """
+        out: list[Market] = []
+        for cond in condition_ids:
+            for closed_state in ("false", "true"):
+                rows = await self._fetch_markets(
+                    params={
+                        "condition_ids": cond,
+                        "closed": closed_state,
+                        "limit": limit,
+                    }
+                )
+                for row in rows:
+                    out.extend(self._row_to_markets(row))
         return out
 
     async def _fetch_markets(self, params: dict[str, Any]) -> list[dict[str, Any]]:
