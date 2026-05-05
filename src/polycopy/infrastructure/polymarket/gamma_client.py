@@ -222,15 +222,16 @@ class PolymarketGammaClient:
 
         out: list[Market] = []
         for token_id_str, outcome in zip(token_ids_raw, outcomes_raw, strict=True):
-            if outcome not in ("Yes", "No"):
-                continue
+            outcome_str = str(outcome).strip()
+            if not outcome_str:
+                continue  # outcome vazio é malformado, skip
             out.append(
                 Market(
                     token_id=TokenId(value=str(token_id_str)),
                     condition_id=condition_id,
                     question=question,
                     slug=slug,
-                    outcome=outcome,
+                    outcome=outcome_str,
                     end_date=end_date,
                     is_active=is_active,
                     is_archived=is_archived,

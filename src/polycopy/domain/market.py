@@ -25,7 +25,9 @@ class Market(BaseModel):
     condition_id: ConditionId
     question: str
     slug: str | None
-    outcome: Annotated[str, Field(pattern=r"^(Yes|No)$")]
+    outcome: Annotated[str, Field(min_length=1)]
+    """Nome da side desta row. Em mercado binário é "Yes"/"No"; em
+    multi-outcome (sport teams, etc) é o nome real do outcome."""
     end_date: datetime | None
     is_active: bool
     is_archived: bool
