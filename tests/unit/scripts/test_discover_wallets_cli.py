@@ -425,3 +425,83 @@ class TestStructuredLogs:
         assert page_events[0]["count"] == 50
         assert page_events[1]["offset"] == 50
         assert page_events[1]["count"] == 25
+
+
+class _FakeDiscoveryRepo:
+    def __init__(self) -> None:
+        self.calls: list[tuple[Any, list[Any]]] = []
+
+    async def insert_run(self, metadata: Any, candidates: list[Any]) -> int:
+        self.calls.append((metadata, candidates))
+        return len(self.calls)
+
+
+class TestDiscoveryPersistence:
+    async def test_repo_called_with_metadata_and_candidates_when_not_dry_run(
+        self, tmp_path: Path
+    ) -> None:
+        seed_path = tmp_path / "seed.yaml"
+        seed_path.write_text(SEED_YAML, encoding="utf-8")
+
+        leaderboard = FakeLeaderboard(
+            pages=[
+                [_entry("b" * 40, "10000", "500"), _entry("c" * 40, "10000", "400")],
+            ]
+        )
+        repo = _FakeDiscoveryRepo()
+        args = DiscoverArgs(
+            time_period=TimePeriod.MONTH,
+            category=Category.OVERALL,
+            top=50,
+            min_volume_usdc=Decimal("0"),
+            seed_path=seed_path,
+            candidates_out=tmp_path / "candidates.yaml",
+            report_out=tmp_path / "report.md",
+            dry_run=False,
+        )
+        exit_code = await run_discover(args, leaderboard, discovery_repo=repo)  # type: ignore[arg-type]
+        assert exit_code == 0
+        assert len(repo.calls) == 1
+        metadata, candidates = repo.calls[0]
+        assert metadata.total_candidates == 2
+        assert len(candidates) == 2
+
+    async def test_repo_not_called_when_dry_run(self, tmp_path: Path) -> None:
+        seed_path = tmp_path / "seed.yaml"
+        seed_path.write_text(SEED_YAML, encoding="utf-8")
+
+        leaderboard = FakeLeaderboard(pages=[[_entry("b" * 40, "10000", "500")]])
+        repo = _FakeDiscoveryRepo()
+        args = DiscoverArgs(
+            time_period=TimePeriod.MONTH,
+            category=Category.OVERALL,
+            top=50,
+            min_volume_usdc=Decimal("0"),
+            seed_path=seed_path,
+            candidates_out=tmp_path / "candidates.yaml",
+            report_out=tmp_path / "report.md",
+            dry_run=True,
+        )
+        exit_code = await run_discover(args, leaderboard, discovery_repo=repo)  # type: ignore[arg-type]
+        assert exit_code == 0
+        assert repo.calls == []
+
+    async def test_repo_optional_default_no_persistence(self, tmp_path: Path) -> None:
+        """Backward compat: chamadas sem repo continuam funcionando."""
+        seed_path = tmp_path / "seed.yaml"
+        seed_path.write_text(SEED_YAML, encoding="utf-8")
+
+        leaderboard = FakeLeaderboard(pages=[[_entry("b" * 40, "10000", "500")]])
+        args = DiscoverArgs(
+            time_period=TimePeriod.MONTH,
+            category=Category.OVERALL,
+            top=50,
+            min_volume_usdc=Decimal("0"),
+            seed_path=seed_path,
+            candidates_out=tmp_path / "candidates.yaml",
+            report_out=tmp_path / "report.md",
+            dry_run=False,
+        )
+        exit_code = await run_discover(args, leaderboard)  # sem discovery_repo kwarg
+        assert exit_code == 0
+        assert (tmp_path / "candidates.yaml").exists()

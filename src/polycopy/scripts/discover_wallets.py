@@ -46,6 +46,7 @@ from polycopy.domain.discovery import (
 from polycopy.domain.value_objects import WalletAddress
 from polycopy.infrastructure.observability.logging import get_logger
 from polycopy.infrastructure.wallets_seed import load_wallets_seed
+from polycopy.ports.discovery_repository import DiscoveryRepository
 from polycopy.ports.polymarket_leaderboard import PolymarketLeaderboardPort
 
 _log = get_logger(__name__)
@@ -108,6 +109,7 @@ def parse_args(argv: list[str] | None = None) -> DiscoverArgs:
 async def run_discover(
     args: DiscoverArgs,
     leaderboard: PolymarketLeaderboardPort,
+    discovery_repo: DiscoveryRepository | None = None,
 ) -> int:
     try:
         seed = load_wallets_seed(args.seed_path)
@@ -218,11 +220,14 @@ async def run_discover(
         render_report_md(candidates, metadata=metadata),
         encoding="utf-8",
     )
+    if discovery_repo is not None:
+        await discovery_repo.insert_run(metadata, candidates)
     _log.info(
         "discover_run_completed",
         dry_run=False,
         candidates_path=str(args.candidates_out),
         report_path=str(args.report_out),
+        persisted_to_db=discovery_repo is not None,
     )
     return 0
 
@@ -241,6 +246,13 @@ async def _async_main(argv: list[str] | None = None) -> int:
     from polycopy.config import Settings
     from polycopy.infrastructure.observability.logging import configure_logging
     from polycopy.infrastructure.observability.metrics import make_metrics
+    from polycopy.infrastructure.persistence.database import (
+        make_engine,
+        make_session_factory,
+    )
+    from polycopy.infrastructure.persistence.discovery_repository import (
+        SqlAlchemyDiscoveryRepository,
+    )
     from polycopy.infrastructure.polymarket.leaderboard_client import (
         PolymarketLeaderboardClient,
     )
@@ -253,7 +265,21 @@ async def _async_main(argv: list[str] | None = None) -> int:
         base_url=settings.polymarket_base_url,
         metrics=metrics,
     )
-    return await run_discover(args, client)
+
+    # Dry-run não persiste no DB (mesma semantica de não escrever arquivos).
+    if args.dry_run:
+        return await run_discover(args, client)
+
+    engine = make_engine(settings)
+    session_factory = make_session_factory(engine)
+    try:
+        async with session_factory() as session:
+            repo = SqlAlchemyDiscoveryRepository(session)
+            exit_code = await run_discover(args, client, discovery_repo=repo)
+            await session.commit()
+        return exit_code
+    finally:
+        await engine.dispose()
 
 
 def main() -> None:

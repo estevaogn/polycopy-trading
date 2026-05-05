@@ -8,9 +8,11 @@ from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
+    ForeignKey,
     Index,
     Integer,
     Numeric,
@@ -290,4 +292,48 @@ class MarketResolutionRow(Base):
         ),
         Index("idx_market_resolutions_resolved_at", "resolved_at"),
         Index("idx_market_resolutions_outcome", "resolved_outcome"),
+    )
+
+
+class DiscoveryRunRow(Base):
+    __tablename__ = "discovery_runs"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    time_period: Mapped[str] = mapped_column(String, nullable=False)
+    category: Mapped[str] = mapped_column(String, nullable=False)
+    order_by: Mapped[str] = mapped_column(String, nullable=False, server_default="PNL")
+    top_requested: Mapped[int] = mapped_column(Integer, nullable=False)
+    min_volume_usdc: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
+    seed_path: Mapped[str] = mapped_column(String, nullable=False)
+    seed_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    total_fetched: Mapped[int] = mapped_column(Integer, nullable=False)
+    total_excluded_existing: Mapped[int] = mapped_column(Integer, nullable=False)
+    total_excluded_min_volume: Mapped[int] = mapped_column(Integer, nullable=False)
+    total_candidates: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (Index("idx_discovery_runs_generated_at", "generated_at"),)
+
+
+class DiscoveryCandidateRow(Base):
+    __tablename__ = "discovery_candidates"
+
+    run_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("discovery_runs.id", ondelete="CASCADE"), primary_key=True
+    )
+    rank: Mapped[int] = mapped_column(Integer, primary_key=True)
+    address: Mapped[str] = mapped_column(String, nullable=False)
+    label: Mapped[str] = mapped_column(String, nullable=False)
+    volume_usdc: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
+    pnl_usdc: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
+    verified_badge: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=sa_text_false()
+    )
+
+    __table_args__ = (
+        CheckConstraint("rank >= 1", name="discovery_candidates_rank_positive"),
+        Index("idx_discovery_candidates_address", "address"),
     )
