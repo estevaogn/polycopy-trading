@@ -117,3 +117,36 @@ async def test_fetch_user_activity_raises_after_max_retries(metrics: object) -> 
     )
     with pytest.raises(httpx.HTTPStatusError):
         await client.fetch_user_activity(WalletAddress(value=_VALID_ADDR))
+
+
+@respx.mock
+async def test_fetch_user_activity_skips_rows_with_empty_condition_id(metrics: object) -> None:
+    """Polymarket /activity às vezes retorna posições com IDs vazios — pular sem errar."""
+    bad = _row()
+    bad["conditionId"] = ""
+    respx.get(f"{_BASE}/activity").mock(
+        return_value=httpx.Response(200, json=_activity_response([_row(), bad, _row()]))
+    )
+    client = PolymarketDataClient(base_url=_BASE, metrics=metrics, timeout_s=5)  # type: ignore[arg-type]
+    trades = await client.fetch_user_activity(WalletAddress(value=_VALID_ADDR))
+    assert len(trades) == 2
+    assert (
+        metrics.polymarket_rows_skipped_total.labels(reason="empty_condition_id")._value.get()  # type: ignore[attr-defined]
+        == 1
+    )
+
+
+@respx.mock
+async def test_fetch_user_activity_skips_rows_with_empty_asset(metrics: object) -> None:
+    bad = _row()
+    bad["asset"] = ""
+    respx.get(f"{_BASE}/activity").mock(
+        return_value=httpx.Response(200, json=_activity_response([bad]))
+    )
+    client = PolymarketDataClient(base_url=_BASE, metrics=metrics, timeout_s=5)  # type: ignore[arg-type]
+    trades = await client.fetch_user_activity(WalletAddress(value=_VALID_ADDR))
+    assert trades == []
+    assert (
+        metrics.polymarket_rows_skipped_total.labels(reason="empty_asset")._value.get()  # type: ignore[attr-defined]
+        == 1
+    )
