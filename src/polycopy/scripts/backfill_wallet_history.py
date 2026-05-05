@@ -25,48 +25,32 @@ import sys
 from datetime import UTC, datetime, timedelta
 
 
-async def _backfill_wallet(
+async def _backfill_one(
     *,
     wallet_address: str,
     since: datetime,
     limit: int,
+    client: object,  # PolymarketDataClient — protocolo cumprido
+    session_factory: object,
 ) -> tuple[int, int]:
-    """Backfill 1 wallet. Retorna (fetched, inserted)."""
-    from polycopy.config import Settings
+    """Backfill 1 wallet usando client/session_factory já criados. Retorna (fetched, inserted)."""
     from polycopy.domain.value_objects import WalletAddress
-    from polycopy.infrastructure.observability.metrics import make_metrics
-    from polycopy.infrastructure.persistence.database import (
-        make_engine,
-        make_session_factory,
-    )
     from polycopy.infrastructure.persistence.wallet_trade_repository import (
         SqlAlchemyWalletTradeRepository,
     )
-    from polycopy.infrastructure.polymarket.data_client import PolymarketDataClient
 
-    settings = Settings()
-    engine = make_engine(settings)
-    try:
-        client = PolymarketDataClient(
-            base_url=settings.polymarket_base_url,
-            metrics=make_metrics(),
-            timeout_s=30.0,
-        )
-        addr = WalletAddress(value=wallet_address)
-        trades = await client.fetch_user_activity(addr, since=since, limit=limit)
-        fetched = len(trades)
+    addr = WalletAddress(value=wallet_address)
+    trades = await client.fetch_user_activity(addr, since=since, limit=limit)  # type: ignore[attr-defined]
+    fetched = len(trades)
 
-        session_factory = make_session_factory(engine)
-        inserted = 0
-        async with session_factory() as session:
-            repo = SqlAlchemyWalletTradeRepository(session)
-            for trade in trades:
-                if await repo.insert_if_absent(trade):
-                    inserted += 1
-            await session.commit()
-        return fetched, inserted
-    finally:
-        await engine.dispose()
+    inserted = 0
+    async with session_factory() as session:  # type: ignore[operator]
+        repo = SqlAlchemyWalletTradeRepository(session)
+        for trade in trades:
+            if await repo.insert_if_absent(trade):
+                inserted += 1
+        await session.commit()
+    return fetched, inserted
 
 
 async def _load_all_tracked_wallets() -> list[str]:
@@ -93,6 +77,16 @@ async def _load_all_tracked_wallets() -> list[str]:
 
 
 async def _async_main(argv: list[str] | None = None) -> int:
+    from prometheus_client import CollectorRegistry
+
+    from polycopy.config import Settings
+    from polycopy.infrastructure.observability.metrics import make_metrics
+    from polycopy.infrastructure.persistence.database import (
+        make_engine,
+        make_session_factory,
+    )
+    from polycopy.infrastructure.polymarket.data_client import PolymarketDataClient
+
     parser = argparse.ArgumentParser(prog="backfill_wallet_history")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
@@ -130,27 +124,44 @@ async def _async_main(argv: list[str] | None = None) -> int:
     since = datetime.now(tz=UTC) - timedelta(days=ns.since_days)
     print(f"backfilling {len(wallets)} wallet(s) desde {since.isoformat()} (limit={ns.limit})")
 
-    total_fetched = 0
-    total_inserted = 0
-    for i, addr in enumerate(wallets, 1):
-        try:
-            fetched, inserted = await _backfill_wallet(
-                wallet_address=addr,
-                since=since,
-                limit=ns.limit,
-            )
-        except Exception as exc:  # noqa: BLE001
-            print(
-                f"[{i}/{len(wallets)}] {addr}: ERROR {type(exc).__name__}: {exc}", file=sys.stderr
-            )
-            continue
-        total_fetched += fetched
-        total_inserted += inserted
-        warn = " (limit atingido — pode ter mais histórico)" if fetched >= ns.limit else ""
-        print(f"[{i}/{len(wallets)}] {addr}: fetched={fetched} inserted={inserted}{warn}")
+    settings = Settings()
+    engine = make_engine(settings)
+    try:
+        # Registry isolado pra evitar colisão com qualquer global REGISTRY pré-existente.
+        metrics = make_metrics(registry=CollectorRegistry())
+        client = PolymarketDataClient(
+            base_url=settings.polymarket_base_url,
+            metrics=metrics,
+            timeout_s=30.0,
+        )
+        session_factory = make_session_factory(engine)
 
-    print(f"done. total_fetched={total_fetched} total_inserted={total_inserted}")
-    return 0
+        total_fetched = 0
+        total_inserted = 0
+        for i, addr in enumerate(wallets, 1):
+            try:
+                fetched, inserted = await _backfill_one(
+                    wallet_address=addr,
+                    since=since,
+                    limit=ns.limit,
+                    client=client,
+                    session_factory=session_factory,
+                )
+            except Exception as exc:  # noqa: BLE001
+                print(
+                    f"[{i}/{len(wallets)}] {addr}: ERROR {type(exc).__name__}: {exc}",
+                    file=sys.stderr,
+                )
+                continue
+            total_fetched += fetched
+            total_inserted += inserted
+            warn = " (limit atingido — pode ter mais histórico)" if fetched >= ns.limit else ""
+            print(f"[{i}/{len(wallets)}] {addr}: fetched={fetched} inserted={inserted}{warn}")
+
+        print(f"done. total_fetched={total_fetched} total_inserted={total_inserted}")
+        return 0
+    finally:
+        await engine.dispose()
 
 
 def main() -> None:
