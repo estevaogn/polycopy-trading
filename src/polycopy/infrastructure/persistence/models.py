@@ -318,6 +318,17 @@ class DiscoveryRunRow(Base):
     __table_args__ = (Index("idx_discovery_runs_generated_at", "generated_at"),)
 
 
+class NotifierConfigRow(Base):
+    __tablename__ = "notifier_config"
+
+    key: Mapped[str] = mapped_column(String, primary_key=True)
+    value: Mapped[str] = mapped_column(String, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_by: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
 class DiscoveryCandidateRow(Base):
     __tablename__ = "discovery_candidates"
 

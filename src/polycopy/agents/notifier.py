@@ -14,6 +14,9 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import AsyncGenerator, Callable
+from contextlib import AbstractAsyncContextManager
+from decimal import Decimal
 
 from pydantic import ValidationError
 
@@ -27,7 +30,13 @@ from polycopy.infrastructure.telegram.notifier_client import (
     TelegramNotifier,
 )
 from polycopy.infrastructure.wallets_seed import TrackedWallet
-from polycopy.ports import MessagingPort
+from polycopy.ports import MessagingPort, NotifierConfigRepository
+
+# Polling do config: 30s entre re-leituras. Hot reload sem restart.
+_CONFIG_RELOAD_S = 30.0
+
+# Factory async-context que entrega um repository pronto (gerencia session).
+ConfigRepoFactory = Callable[[], AbstractAsyncContextManager[NotifierConfigRepository]]
 
 
 class NotifierAgent(AgentBase):
@@ -41,6 +50,7 @@ class NotifierAgent(AgentBase):
         telegram: TelegramNotifier,
         wallets_by_address: dict[str, TrackedWallet],
         metrics: Metrics,
+        config_repo_factory: ConfigRepoFactory | None = None,
         max_deliver: int = 5,
     ) -> None:
         super().__init__(stopping=stopping, interval_s=1.0)
@@ -49,6 +59,10 @@ class NotifierAgent(AgentBase):
         self._wallets_by_address = wallets_by_address
         self._metrics = metrics
         self._max_deliver = max_deliver
+        self._config_repo_factory = config_repo_factory
+        # Cache do filtro: 0 = sem filtro (default backward-compat).
+        self._min_size_usdc: Decimal = Decimal(0)
+        self._last_config_load: float = 0.0
 
     async def start(self) -> None:
         """Registra durable consumer no JetStream; chamar antes de `run()`.
@@ -57,6 +71,7 @@ class NotifierAgent(AgentBase):
         no callback `_handle_message` registrado aqui. O loop do `AgentBase.run()`
         apenas mantém o agente vivo e emite heartbeat estruturado periódico.
         """
+        await self._reload_config_if_due(force=True)
         await self._bus.subscribe(
             WalletTradeDetected.SUBJECT,
             self._handle_message,
@@ -66,7 +81,36 @@ class NotifierAgent(AgentBase):
 
     async def run_once(self) -> None:
         # Trabalho real está no callback. AgentBase loop dá heartbeat estruturado.
+        await self._reload_config_if_due(force=False)
         await asyncio.sleep(self._interval_s)
+
+    async def _reload_config_if_due(self, *, force: bool) -> None:
+        """Recarrega filtro do DB se passou _CONFIG_RELOAD_S desde último load.
+
+        Best-effort: erros são logados e mantém o último valor conhecido.
+        """
+        if self._config_repo_factory is None:
+            return
+        now = time.monotonic()
+        if not force and (now - self._last_config_load) < _CONFIG_RELOAD_S:
+            return
+        try:
+            async with self._config_repo_factory() as repo:
+                new_value = await repo.get_min_size_usdc()
+            if new_value != self._min_size_usdc:
+                self._log.info(
+                    "notifier_filter_updated",
+                    old_min_size_usdc=str(self._min_size_usdc),
+                    new_min_size_usdc=str(new_value),
+                )
+            self._min_size_usdc = new_value
+            self._last_config_load = now
+        except Exception as exc:  # noqa: BLE001
+            self._log.warning(
+                "notifier_config_load_failed",
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
 
     def _label_for(self, address: str) -> str:
         wallet = self._wallets_by_address.get(address)
@@ -94,6 +138,11 @@ class NotifierAgent(AgentBase):
                 self._metrics.notifier_messages_total.labels(outcome="invalid_payload").inc()
                 return  # acka (no _durable_wrapper) e descarta a mensagem corrompida
 
+            # K1 filter: mensagens com size < min_size_usdc são ackadas sem enviar.
+            if event.trade.size_usdc.amount < self._min_size_usdc:
+                self._metrics.notifier_messages_total.labels(outcome="filtered_size").inc()
+                return
+
             label = self._label_for(event.trade.wallet.value)
             try:
                 await self._telegram.send_trade_notification(event.trade, label=label)
@@ -112,10 +161,19 @@ class NotifierAgent(AgentBase):
 
 async def main() -> None:
     """Entrypoint: monta dependências, sobe /metrics, registra signal handlers, roda."""
+    from contextlib import asynccontextmanager
+
     from aiogram import Bot
 
     from polycopy.infrastructure.messaging.nats_bus import NatsMessagingBus
     from polycopy.infrastructure.observability.logging import configure_logging
+    from polycopy.infrastructure.persistence.database import (
+        make_engine,
+        make_session_factory,
+    )
+    from polycopy.infrastructure.persistence.notifier_config_repository import (
+        SqlAlchemyNotifierConfigRepository,
+    )
     from polycopy.infrastructure.wallets_seed import load_wallets_seed
 
     settings = Settings()
@@ -138,6 +196,14 @@ async def main() -> None:
     bus = NatsMessagingBus(url=settings.nats_url)
     await bus.connect()
 
+    engine = make_engine(settings)
+    session_factory = make_session_factory(engine)
+
+    @asynccontextmanager
+    async def _repo_factory() -> AsyncGenerator[NotifierConfigRepository, None]:
+        async with session_factory() as session:
+            yield SqlAlchemyNotifierConfigRepository(session)
+
     stopping = asyncio.Event()
     setup_signal_handlers(stopping)
 
@@ -147,6 +213,7 @@ async def main() -> None:
         telegram=telegram,
         wallets_by_address=wallets_by_address,
         metrics=metrics,
+        config_repo_factory=_repo_factory,
     )
     await agent.start()
     try:
@@ -154,6 +221,7 @@ async def main() -> None:
     finally:
         await bus.close()
         await bot.session.close()
+        await engine.dispose()
         metrics_server.shutdown()
 
 

@@ -116,3 +116,33 @@ async def test_handle_message_invalid_payload_increments_metric_and_returns() ->
     samples = list(agent._metrics.notifier_messages_total.collect())[0].samples
     invalid = [s for s in samples if s.labels.get("outcome") == "invalid_payload"]
     assert any(s.value >= 1 for s in invalid)
+
+
+async def test_handle_message_filters_below_min_size() -> None:
+    """K1: trade com size < min_size_usdc não envia Telegram, conta filtered_size."""
+    agent, telegram = _agent_with_mocks()
+    agent._min_size_usdc = Decimal("50")  # threshold acima do size do _event() (10)
+    payload = _event().model_dump_json().encode("utf-8")
+    await agent._handle_message(payload, num_delivered=1)
+    telegram.send_trade_notification.assert_not_called()
+    samples = list(agent._metrics.notifier_messages_total.collect())[0].samples
+    filtered = [s for s in samples if s.labels.get("outcome") == "filtered_size"]
+    assert any(s.value >= 1 for s in filtered)
+
+
+async def test_handle_message_passes_when_size_at_or_above_min() -> None:
+    """K1: size >= threshold passa pra Telegram normalmente."""
+    agent, telegram = _agent_with_mocks()
+    agent._min_size_usdc = Decimal("10")  # _event() size_usdc = 10 → passa
+    payload = _event().model_dump_json().encode("utf-8")
+    await agent._handle_message(payload, num_delivered=1)
+    telegram.send_trade_notification.assert_called_once()
+
+
+async def test_handle_message_no_filter_when_min_zero() -> None:
+    """Backward-compat: min=0 (default sem config_repo) não filtra nada."""
+    agent, telegram = _agent_with_mocks()
+    assert agent._min_size_usdc == Decimal(0)
+    payload = _event().model_dump_json().encode("utf-8")
+    await agent._handle_message(payload, num_delivered=1)
+    telegram.send_trade_notification.assert_called_once()

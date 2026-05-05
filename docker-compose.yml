@@ -155,13 +155,14 @@ services:
     labels:
       com.polycopy.role: agent
     depends_on:
+      postgres:
+        condition: service_healthy
       nats:
         condition: service_healthy
     environment:
       ENV: ${ENV}
       LOG_LEVEL: ${LOG_LEVEL}
-      # Settings exige todas as vars de infra mesmo que o notifier não use postgres/redis.
-      # Refator pra split (PostgresConfig, RedisConfig) entra em fase posterior.
+      # Postgres usado pra hot-reload do filtro K1 (tabela notifier_config).
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
