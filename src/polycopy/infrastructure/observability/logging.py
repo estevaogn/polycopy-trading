@@ -11,6 +11,35 @@ from structlog.types import EventDict
 
 from polycopy.config import Environment, LogLevel
 
+
+class _LazyStream:
+    """Stream proxy: resolve `sys.stdout` lazily; fallback se stream explícita fechar.
+
+    Workaround pra structlog segurar referência a stream que vira inválida
+    cross-test (ex: StringIO de fixture sem teardown). Em produção, `stream=None`
+    sempre resolve `sys.stdout` atual a cada write — comportamento idempotente.
+    """
+
+    def __init__(self, explicit: TextIO | None) -> None:
+        self._explicit = explicit
+
+    def _target(self) -> TextIO:
+        s = self._explicit
+        if s is not None:
+            try:
+                if not s.closed:
+                    return s
+            except (AttributeError, ValueError):
+                pass
+        return sys.stdout
+
+    def write(self, data: str) -> int:
+        return self._target().write(data)
+
+    def flush(self) -> None:
+        self._target().flush()
+
+
 _REDACTED_KEYS = frozenset(
     {
         "private_key",
@@ -48,7 +77,7 @@ def configure_logging(
         level: nível mínimo de log.
         stream: stream de saída (default sys.stdout). Útil em testes.
     """
-    target_stream = stream if stream is not None else sys.stdout
+    target_stream = _LazyStream(stream)
     log_level = getattr(logging, level.value)
 
     timestamper = structlog.processors.TimeStamper(fmt="iso", utc=True)
@@ -69,7 +98,7 @@ def configure_logging(
         processors=[*shared_processors, renderer],
         wrapper_class=structlog.make_filtering_bound_logger(log_level),
         context_class=dict,
-        logger_factory=structlog.PrintLoggerFactory(file=target_stream),
+        logger_factory=structlog.PrintLoggerFactory(file=cast(TextIO, target_stream)),
         cache_logger_on_first_use=False,
     )
 

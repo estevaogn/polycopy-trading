@@ -597,11 +597,6 @@ async def test_web3_clob_executor_expected_avg_price_propagated_on_clob_error(
     assert result.expected_avg_price is not None
 
 
-@pytest.mark.skip(
-    reason="flaky por test pollution: structlog PrintLoggerFactory captura sys.stdout "
-    "no configure_logging; quando outro teste configura logging sob capsys e sai, "
-    "a stream fica fechada — fix em PR separado (logging factory lazy)."
-)
 async def test_web3_clob_executor_expected_avg_price_none_when_book_fetch_fails(
     metrics: Metrics, kill_switch: KillSwitch
 ) -> None:

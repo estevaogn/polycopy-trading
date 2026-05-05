@@ -75,3 +75,20 @@ def test_dev_uses_console_renderer(capsys: pytest.CaptureFixture[str]) -> None:
     assert "hello-dev" in captured.out
     with pytest.raises(json.JSONDecodeError):
         json.loads(captured.out.strip().splitlines()[-1])
+
+
+def test_log_after_explicit_stream_closed_falls_back_to_stdout(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Stream explícita fechada (cross-test pollution) → fallback pra sys.stdout em vez de raise."""
+    buf = StringIO()
+    configure_logging(env=Environment.PROD, level=LogLevel.INFO, stream=buf)
+    log = get_logger("test")
+    log.info("first")
+    assert "first" in buf.getvalue()
+
+    buf.close()  # simula StringIO órfã referenciada pelo factory após teste anterior
+    log.info("second")  # NÃO deve raise
+
+    captured = capsys.readouterr()
+    assert "second" in captured.out
