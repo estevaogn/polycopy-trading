@@ -68,6 +68,37 @@ services:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - polycopy_prometheus_data:/prometheus
 
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: polycopy-grafana
+    restart: unless-stopped
+    labels:
+      com.polycopy.role: infra
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Bind 127.0.0.1 only (acesso via SSH tunnel) — não expor publicamente.
+      GF_SERVER_ROOT_URL: http://localhost:3000
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      # Postgres datasource via provisioning consome estas:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - polycopy_grafana_data:/var/lib/grafana
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
   watcher:
     build:
       context: .
@@ -368,6 +399,7 @@ services:
       start_period: 15s
 
 volumes:
+  polycopy_grafana_data:
   polycopy_postgres_data:
   polycopy_nats_data:
   polycopy_prometheus_data:
