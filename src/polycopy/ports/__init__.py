@@ -4,6 +4,7 @@ from polycopy.ports.discovery_repository import DiscoveryRepository
 from polycopy.ports.market_repository import CachedMarket, MarketRepository
 from polycopy.ports.market_resolution_repository import MarketResolutionRepository
 from polycopy.ports.messaging import MessagingPort
+from polycopy.ports.notifier_config_repository import NotifierConfigRepository
 from polycopy.ports.order_execution_repository import OrderExecutionRepository
 from polycopy.ports.order_executor import OrderExecutor
 from polycopy.ports.order_sizing_repository import OrderSizingRepository
@@ -19,6 +20,7 @@ __all__ = [
     "MarketRepository",
     "MarketResolutionRepository",
     "MessagingPort",
+    "NotifierConfigRepository",
     "OrderExecutionRepository",
     "OrderExecutor",
     "OrderSizingRepository",

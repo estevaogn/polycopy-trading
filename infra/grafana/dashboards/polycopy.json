@@ -13,7 +13,7 @@
       "type": "table",
       "title": "Resumo por janela (carteira hipotética)",
       "datasource": { "type": "postgres", "uid": "postgres" },
-      "gridPos": { "h": 9, "w": 18, "x": 0, "y": 0 },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 0 },
       "targets": [
         {
           "refId": "A",
@@ -38,7 +38,7 @@
       "type": "stat",
       "title": "Ordens pendentes",
       "datasource": { "type": "postgres", "uid": "postgres" },
-      "gridPos": { "h": 9, "w": 6, "x": 18, "y": 0 },
+      "gridPos": { "h": 9, "w": 6, "x": 12, "y": 0 },
       "targets": [
         {
           "refId": "A",
@@ -60,6 +60,38 @@
               { "color": "blue", "value": null }
             ]
           }
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Notifier filter — min size USDC",
+      "description": "Threshold atual do filtro K1. Editar via: uv run python -m polycopy.scripts.set_notifier_filter --min-size <valor>. Hot reload em até 30s.",
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "gridPos": { "h": 9, "w": 6, "x": 18, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT value::numeric AS \"Min USDC\" FROM notifier_config WHERE key = 'min_size_usdc';"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "purple", "value": null }
+            ]
+          },
+          "unit": "currencyUSD"
         }
       }
     },
