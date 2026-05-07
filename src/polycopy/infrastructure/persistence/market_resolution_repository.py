@@ -5,7 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import cast
 
-from sqlalchemy import CursorResult, distinct, select, text
+from sqlalchemy import CursorResult, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -47,14 +47,23 @@ class SqlAlchemyMarketResolutionRepository:
         return result.rowcount == 1
 
     async def get_unresolved_condition_ids(self, *, limit: int) -> list[str]:
-        """LEFT JOIN wallet_trades vs market_resolutions WHERE resolution IS NULL."""
+        """LEFT JOIN wallet_trades vs market_resolutions WHERE resolution IS NULL.
+
+        Retorna ordenado por trade mais antigo primeiro (MIN(occurred_at) ASC).
+        Mercados antigos têm maior probabilidade de já estarem resolvidos na
+        Gamma; processá-los primeiro acelera a catalogação. Sem ORDER BY o
+        Postgres pode retornar os mesmos N rows a cada cycle, deixando o
+        resolver \"travado\" verificando o mesmo conjunto.
+        """
         stmt = (
-            select(distinct(WalletTradeRow.condition_id))
+            select(WalletTradeRow.condition_id)
             .outerjoin(
                 MarketResolutionRow,
                 MarketResolutionRow.condition_id == WalletTradeRow.condition_id,
             )
             .where(MarketResolutionRow.condition_id.is_(None))
+            .group_by(WalletTradeRow.condition_id)
+            .order_by(func.min(WalletTradeRow.occurred_at).asc())
             .limit(limit)
         )
         result = await self._session.execute(stmt)

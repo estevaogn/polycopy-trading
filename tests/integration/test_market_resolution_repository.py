@@ -186,6 +186,49 @@ async def test_get_unresolved_condition_ids_left_join_works(
         assert cond_a not in unresolved
 
 
+async def test_get_unresolved_orders_oldest_first(db_session: AsyncSession) -> None:
+    """Ordena por trade mais antigo (MIN occurred_at) — mercado mais provável de ter resolvido."""
+    from datetime import UTC, datetime, timedelta
+
+    await db_session.execute(text("TRUNCATE wallet_trades, market_resolutions CASCADE"))
+
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    cond_old = _unique_cond()
+    cond_recent = _unique_cond()
+    # cond_recent inserida primeiro mas com timestamp mais novo (60d depois).
+    await db_session.execute(
+        text(
+            "INSERT INTO wallet_trades (tx_hash, log_index, wallet, condition_id, "
+            "token_id, side, price, size_usdc, occurred_at) "
+            "VALUES (:tx, 0, :w, :c, '999', 'BUY', 0.5, 10, :t)"
+        ),
+        {
+            "tx": "0x" + "01" * 32,
+            "w": _VALID_WALLET,
+            "c": cond_recent,
+            "t": base + timedelta(days=60),
+        },
+    )
+    await db_session.execute(
+        text(
+            "INSERT INTO wallet_trades (tx_hash, log_index, wallet, condition_id, "
+            "token_id, side, price, size_usdc, occurred_at) "
+            "VALUES (:tx, 0, :w, :c, '999', 'BUY', 0.5, 10, :t)"
+        ),
+        {
+            "tx": "0x" + "02" * 32,
+            "w": _VALID_WALLET,
+            "c": cond_old,
+            "t": base,
+        },
+    )
+
+    repo = SqlAlchemyMarketResolutionRepository(db_session)
+    unresolved = await repo.get_unresolved_condition_ids(limit=10)
+    # cond_old (jan 1) deve vir antes de cond_recent (mar 2) na ordem.
+    assert unresolved.index(cond_old) < unresolved.index(cond_recent)
+
+
 async def test_adapter_satisfies_protocol(
     db_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
