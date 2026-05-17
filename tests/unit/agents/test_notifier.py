@@ -47,7 +47,11 @@ def _event() -> WalletTradeDetected:
     )
 
 
-def _agent_with_mocks(*, max_deliver: int = 5) -> tuple[NotifierAgent, AsyncMock]:
+def _agent_with_mocks(
+    *,
+    max_deliver: int = 5,
+    wallet_allowlist: frozenset[str] = frozenset(),
+) -> tuple[NotifierAgent, AsyncMock]:
     metrics = make_metrics(registry=CollectorRegistry())
     telegram = AsyncMock()
     wallets_by_addr = {
@@ -61,6 +65,7 @@ def _agent_with_mocks(*, max_deliver: int = 5) -> tuple[NotifierAgent, AsyncMock
         wallets_by_address=wallets_by_addr,
         metrics=metrics,
         max_deliver=max_deliver,
+        wallet_allowlist=wallet_allowlist,
     )
     return agent, telegram
 
@@ -143,6 +148,26 @@ async def test_handle_message_no_filter_when_min_zero() -> None:
     """Backward-compat: min=0 (default sem config_repo) não filtra nada."""
     agent, telegram = _agent_with_mocks()
     assert agent._min_size_usdc == Decimal(0)
+    payload = _event().model_dump_json().encode("utf-8")
+    await agent._handle_message(payload, num_delivered=1)
+    telegram.send_trade_notification.assert_called_once()
+
+
+async def test_handle_message_filters_when_wallet_not_in_allowlist() -> None:
+    """Wallet fora da allowlist é silenciada (sem Telegram, métrica filtered_wallet)."""
+    other = "0x" + "2" * 40
+    agent, telegram = _agent_with_mocks(wallet_allowlist=frozenset({other.lower()}))
+    payload = _event().model_dump_json().encode("utf-8")
+    await agent._handle_message(payload, num_delivered=1)
+    telegram.send_trade_notification.assert_not_called()
+    samples = list(agent._metrics.notifier_messages_total.collect())[0].samples
+    filtered = [s for s in samples if s.labels.get("outcome") == "filtered_wallet"]
+    assert any(s.value >= 1 for s in filtered)
+
+
+async def test_handle_message_passes_when_wallet_in_allowlist() -> None:
+    """Wallet listada na allowlist envia normalmente."""
+    agent, telegram = _agent_with_mocks(wallet_allowlist=frozenset({_VALID_ADDR.lower()}))
     payload = _event().model_dump_json().encode("utf-8")
     await agent._handle_message(payload, num_delivered=1)
     telegram.send_trade_notification.assert_called_once()

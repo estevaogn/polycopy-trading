@@ -38,6 +38,7 @@ class WalletTradeDetected(BaseModel):
 class RejectionReason(StrEnum):
     """Razões pelas quais Risk rejeita um trade."""
 
+    WALLET_NOT_IN_ALLOWLIST = "wallet_not_in_allowlist"
     SIZE_EXCEEDED = "size_exceeded"
     MARKET_NOT_CACHED = "market_not_cached"
     MARKET_INACTIVE = "market_inactive"

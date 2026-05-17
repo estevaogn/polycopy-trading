@@ -51,6 +51,7 @@ class NotifierAgent(AgentBase):
         wallets_by_address: dict[str, TrackedWallet],
         metrics: Metrics,
         config_repo_factory: ConfigRepoFactory | None = None,
+        wallet_allowlist: frozenset[str] = frozenset(),
         max_deliver: int = 5,
     ) -> None:
         super().__init__(stopping=stopping, interval_s=1.0)
@@ -60,6 +61,7 @@ class NotifierAgent(AgentBase):
         self._metrics = metrics
         self._max_deliver = max_deliver
         self._config_repo_factory = config_repo_factory
+        self._wallet_allowlist = wallet_allowlist
         # Cache do filtro: 0 = sem filtro (default backward-compat).
         self._min_size_usdc: Decimal = Decimal(0)
         self._last_config_load: float = 0.0
@@ -138,6 +140,15 @@ class NotifierAgent(AgentBase):
                 self._metrics.notifier_messages_total.labels(outcome="invalid_payload").inc()
                 return  # acka (no _durable_wrapper) e descarta a mensagem corrompida
 
+            # Wallet allowlist (mesma do RISK_COPY_ALLOWLIST): se preenchida, só
+            # notifica trades das wallets em copy. Vazia = notifica todas (default).
+            if (
+                self._wallet_allowlist
+                and event.trade.wallet.value.lower() not in self._wallet_allowlist
+            ):
+                self._metrics.notifier_messages_total.labels(outcome="filtered_wallet").inc()
+                return
+
             # K1 filter: mensagens com size < min_size_usdc são ackadas sem enviar.
             if event.trade.size_usdc.amount < self._min_size_usdc:
                 self._metrics.notifier_messages_total.labels(outcome="filtered_size").inc()
@@ -207,6 +218,10 @@ async def main() -> None:
     stopping = asyncio.Event()
     setup_signal_handlers(stopping)
 
+    wallet_allowlist = frozenset(
+        addr.strip().lower() for addr in settings.risk_copy_allowlist.split(",") if addr.strip()
+    )
+
     agent = NotifierAgent(
         stopping=stopping,
         bus=bus,
@@ -214,6 +229,7 @@ async def main() -> None:
         wallets_by_address=wallets_by_address,
         metrics=metrics,
         config_repo_factory=_repo_factory,
+        wallet_allowlist=wallet_allowlist,
     )
     await agent.start()
     try:

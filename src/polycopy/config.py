@@ -87,6 +87,14 @@ class Settings(BaseSettings):
     risk_max_price: Decimal = Field(Decimal("0.95"), alias="RISK_MAX_PRICE")
     risk_min_liquidity_usdc: Decimal = Field(Decimal("1000"), alias="RISK_MIN_LIQUIDITY_USDC")
     risk_gamma_fetch_timeout_s: float = Field(5.0, alias="RISK_GAMMA_FETCH_TIMEOUT_S")
+    risk_copy_allowlist: str = Field("", alias="RISK_COPY_ALLOWLIST")
+    """CSV de endereços a copiar. Vazio = sem filtro (toda wallet do seed passa).
+
+    Quando preenchido, Risk rejeita trades de wallets fora da lista (fail-fast,
+    antes de qualquer lookup). Comparação case-insensitive. Útil pra real-mode
+    seletivo: watcher continua coletando dados de todas as wallets do seed, mas
+    apenas as listadas aqui chegam ao executor.
+    """
 
     # Sizing agent (Plano 2C)
     sizing_metrics_port: int = Field(9105, alias="SIZING_METRICS_PORT")

@@ -178,6 +178,7 @@ def _make_agent(
     gamma: _StubGamma,
     repo_decision: _StubRepoDecision,
     repo_market: _StubRepoMarket,
+    copy_allowlist: frozenset[str] = frozenset(),
 ) -> RiskAgent:
     @asynccontextmanager
     async def _decision_factory() -> AsyncIterator[RiskDecisionRepository]:
@@ -198,6 +199,7 @@ def _make_agent(
         max_price=Decimal("0.95"),
         min_liquidity_usdc=Decimal("1000"),
         metrics=metrics,
+        copy_allowlist=copy_allowlist,
     )
 
 
@@ -226,6 +228,89 @@ async def test_approve_when_all_rules_pass(metrics: Metrics) -> None:
     # (não é sobrescrito por decided_at). decided_at vai num campo separado.
     assert bus.approved[0].occurred_at == event.occurred_at
     assert bus.approved[0].decided_at == repo_d.inserted[0].decided_at
+
+
+async def test_approve_when_wallet_in_allowlist(metrics: Metrics) -> None:
+    market = _market()
+    bus = _StubBus()
+    gamma = _StubGamma()
+    repo_d = _StubRepoDecision()
+    repo_m = _StubRepoMarket(cached=_FakeCachedMarket(market))
+    agent = _make_agent(
+        metrics=metrics,
+        bus=bus,
+        gamma=gamma,
+        repo_decision=repo_d,
+        repo_market=repo_m,
+        copy_allowlist=frozenset({_VALID_WALLET.lower()}),
+    )
+
+    event = _wallet_trade_event()
+    await agent._handle_message(event.model_dump_json().encode(), 1)
+
+    assert repo_d.inserted[0].decision == "approved"
+    assert len(bus.approved) == 1
+
+
+async def test_reject_when_wallet_not_in_allowlist(metrics: Metrics) -> None:
+    """Wallet fora da allowlist é rejeitada sem fetch de market (fail-fast)."""
+    market = _market()
+    bus = _StubBus()
+    gamma = _StubGamma()
+    repo_d = _StubRepoDecision()
+    repo_m = _StubRepoMarket(cached=_FakeCachedMarket(market))
+    other_wallet = "0x" + "2" * 40
+    agent = _make_agent(
+        metrics=metrics,
+        bus=bus,
+        gamma=gamma,
+        repo_decision=repo_d,
+        repo_market=repo_m,
+        copy_allowlist=frozenset({other_wallet.lower()}),
+    )
+
+    event = _wallet_trade_event()
+    await agent._handle_message(event.model_dump_json().encode(), 1)
+
+    assert repo_d.inserted[0].reason == RejectionReason.WALLET_NOT_IN_ALLOWLIST
+    assert len(bus.rejected) == 1
+    assert bus.rejected[0].reason == RejectionReason.WALLET_NOT_IN_ALLOWLIST
+    # Fail-fast: nenhum lookup de market (sem I/O Gamma, sem upsert no repo).
+    assert gamma.calls == []
+    assert repo_m.upserts == []
+
+
+async def test_allowlist_matches_mixed_case_wallet(metrics: Metrics) -> None:
+    """Wallet do trade vem mixed-case; agent normaliza com .lower() antes do match."""
+    market = _market()
+    bus = _StubBus()
+    gamma = _StubGamma()
+    repo_d = _StubRepoDecision()
+    repo_m = _StubRepoMarket(cached=_FakeCachedMarket(market))
+    mixed_case = "0x" + "Ab" * 20  # 40 chars, mixed case
+    trade_mixed = Trade(
+        tx_hash="0x" + "ab" * 32,
+        log_index=0,
+        wallet=WalletAddress(value=mixed_case),
+        condition_id=ConditionId(value=_VALID_COND),
+        token_id=TokenId(value="42"),
+        side=Side.BUY,
+        price=Price(value=Decimal("0.5")),
+        size_usdc=Money.from_usdc("10"),
+        occurred_at=datetime.now(tz=UTC),
+    )
+    agent = _make_agent(
+        metrics=metrics,
+        bus=bus,
+        gamma=gamma,
+        repo_decision=repo_d,
+        repo_market=repo_m,
+        copy_allowlist=frozenset({mixed_case.lower()}),
+    )
+
+    await agent._handle_message(_wallet_trade_event(trade_mixed).model_dump_json().encode(), 1)
+
+    assert repo_d.inserted[0].decision == "approved"
 
 
 async def test_reject_size_exceeded(metrics: Metrics) -> None:

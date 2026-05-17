@@ -1,6 +1,6 @@
 """RiskAgent: gate de risco entre detecção (1B) e sizing (2C).
 
-Consome `wallet.trade.detected`, aplica 5 regras hardcoded com lazy
+Consome `wallet.trade.detected`, aplica 6 regras hardcoded com lazy
 fallback via Gamma quando MarketRepository miss/stale, persiste
 decisão em `risk_decisions` e publica `order.approved` ou
 `trade.rejected`.
@@ -17,6 +17,7 @@ Settings (Plano 2B):
     RISK_MAX_PRICE                default 0.95
     RISK_MIN_LIQUIDITY_USDC       default 1000
     RISK_GAMMA_FETCH_TIMEOUT_S    default 5.0
+    RISK_COPY_ALLOWLIST           default ""  (CSV; vazio = sem filtro)
 """
 
 from __future__ import annotations
@@ -73,6 +74,7 @@ class RiskAgent(AgentBase):
         max_price: Decimal,
         min_liquidity_usdc: Decimal,
         metrics: Metrics,
+        copy_allowlist: frozenset[str] = frozenset(),
         durable_name: str = "risk-1",
         max_deliver: int = 5,
     ) -> None:
@@ -86,6 +88,7 @@ class RiskAgent(AgentBase):
         self._max_price = max_price
         self._min_liquidity_usdc = min_liquidity_usdc
         self._metrics = metrics
+        self._copy_allowlist = copy_allowlist
         self._durable_name = durable_name
         self._max_deliver = max_deliver
 
@@ -120,10 +123,17 @@ class RiskAgent(AgentBase):
                 ).inc()
                 return
 
-            market, cache_result = await self._fetch_market(event.trade.token_id)
-            self._metrics.market_cache_hits_total.labels(result=cache_result).inc()
-
-            reason = self._evaluate(event.trade, market)
+            if (
+                self._copy_allowlist
+                and event.trade.wallet.value.lower() not in self._copy_allowlist
+            ):
+                # Fail-fast: pula fetch_market (sem I/O) pra wallets descartadas.
+                reason: RejectionReason | None = RejectionReason.WALLET_NOT_IN_ALLOWLIST
+                cache_result = "skipped_allowlist"
+            else:
+                market, cache_result = await self._fetch_market(event.trade.token_id)
+                self._metrics.market_cache_hits_total.labels(result=cache_result).inc()
+                reason = self._evaluate(event.trade, market)
 
             decision = RiskDecision(
                 trade_event_id=event.event_id,
@@ -205,11 +215,16 @@ class RiskAgent(AgentBase):
             return None, "miss"
 
     def _evaluate(self, trade: Trade, market: Market | None) -> RejectionReason | None:
-        """Aplica 5 regras na ordem. Retorna RejectionReason (rejeição) ou None (aprovado).
+        """Aplica 6 regras na ordem. Retorna RejectionReason (rejeição) ou None (aprovado).
 
         Regras avaliadas em ordem; primeira falha é a única reportada.
         Trade pode violar múltiplas — `reason` é a "pior primeira".
+
+        Ordem é fail-fast: allowlist (set lookup, sem I/O) vem ANTES de qualquer
+        verificação que dependa de market metadata.
         """
+        if self._copy_allowlist and trade.wallet.value.lower() not in self._copy_allowlist:
+            return RejectionReason.WALLET_NOT_IN_ALLOWLIST
         if trade.size_usdc.amount > self._max_trade_usdc:
             return RejectionReason.SIZE_EXCEEDED
         if market is None:
@@ -300,6 +315,10 @@ async def main() -> None:
     stopping = asyncio.Event()
     setup_signal_handlers(stopping)
 
+    copy_allowlist = frozenset(
+        addr.strip().lower() for addr in settings.risk_copy_allowlist.split(",") if addr.strip()
+    )
+
     agent = RiskAgent(
         stopping=stopping,
         bus=bus,
@@ -311,6 +330,7 @@ async def main() -> None:
         max_price=settings.risk_max_price,
         min_liquidity_usdc=settings.risk_min_liquidity_usdc,
         metrics=metrics,
+        copy_allowlist=copy_allowlist,
         durable_name=settings.risk_durable_name,
         max_deliver=settings.risk_max_deliver,
     )
