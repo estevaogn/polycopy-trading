@@ -87,6 +87,15 @@ class Settings(BaseSettings):
     risk_max_price: Decimal = Field(Decimal("0.95"), alias="RISK_MAX_PRICE")
     risk_min_liquidity_usdc: Decimal = Field(Decimal("1000"), alias="RISK_MIN_LIQUIDITY_USDC")
     risk_gamma_fetch_timeout_s: float = Field(5.0, alias="RISK_GAMMA_FETCH_TIMEOUT_S")
+    polymarket_proxy_url: SecretStr | None = Field(None, alias="POLYMARKET_PROXY_URL")
+    """Proxy HTTP(S) opcional pra chamadas py-clob-client.
+
+    Polymarket geo-bloqueia POST /order de IPs datacenter. Setando esse proxy,
+    todas as chamadas do ClobClient (post_order, create_api_creds, etc) vão via
+    o proxy. Formato: http://user:pass@host:port. None = direto (DRY-RUN ok do
+    datacenter; real-mode precisa proxy residencial em jurisdição permitida).
+    """
+
     risk_copy_allowlist: str = Field("", alias="RISK_COPY_ALLOWLIST")
     """CSV de endereços a copiar. Vazio = sem filtro (toda wallet do seed passa).
 

@@ -189,9 +189,22 @@ def build_clob_client(settings: Settings) -> ClobClient:
 
     Usado no main() do executor agent quando real-mode ativo.
     Requer wallet_private_key set (raise se None).
+
+    Se POLYMARKET_PROXY_URL setado, monkey-patcha o httpx Client interno do
+    py-clob-client antes de instanciar — Polymarket geo-bloqueia POST /order
+    de IPs datacenter, então proxy residencial é necessário pra real-mode.
     """
     if settings.wallet_private_key is None:
         raise RuntimeError("WALLET_PRIVATE_KEY required for real-mode")
+
+    if settings.polymarket_proxy_url is not None:
+        import httpx
+        from py_clob_client.http_helpers import helpers
+
+        helpers._http_client = httpx.Client(
+            http2=True,
+            proxy=settings.polymarket_proxy_url.get_secret_value(),
+        )
 
     pk = settings.wallet_private_key.get_secret_value()
     # Em EOA SIGNATURE_TYPE=0, funder = address derivada da private key.
